@@ -1,0 +1,8 @@
+[project]
+name = "yahtzee"
+version = "0.1.0"
+description = "A Yahtzee game implementation using pygame"
+requires-python = ">=3.10"
+dependencies = [
+    "pygame>=2.5.0",
+]
