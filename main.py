@@ -4,6 +4,7 @@ Yahtzee Game - A graphical implementation using pygame
 """
 import pygame
 import sys
+import random
 
 # Initialize pygame
 pygame.init()
@@ -19,6 +20,9 @@ BLACK = (0, 0, 0)
 GRAY = (200, 200, 200)
 DICE_COLOR = (240, 240, 240)
 DOT_COLOR = (50, 50, 50)
+BUTTON_COLOR = (70, 130, 180)
+BUTTON_HOVER_COLOR = (100, 149, 237)
+BUTTON_TEXT_COLOR = (255, 255, 255)
 
 # Dice constants
 DICE_SIZE = 80
@@ -41,6 +45,10 @@ class Dice:
         self.x = x
         self.y = y
         self.value = value
+
+    def roll(self):
+        """Roll the die to a random value between 1 and 6"""
+        self.value = random.randint(1, 6)
 
     def draw(self, surface):
         """Draw the die with its current value"""
@@ -100,6 +108,58 @@ class Dice:
             pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y + offset), DOT_RADIUS)
 
 
+class Button:
+    """A simple button class for UI interactions"""
+
+    def __init__(self, x, y, width, height, text, font_size=36):
+        """
+        Initialize a button
+
+        Args:
+            x: X position of button
+            y: Y position of button
+            width: Button width
+            height: Button height
+            text: Button text
+            font_size: Size of button text font
+        """
+        self.rect = pygame.Rect(x, y, width, height)
+        self.text = text
+        self.font = pygame.font.Font(None, font_size)
+        self.is_hovered = False
+
+    def handle_event(self, event):
+        """
+        Handle mouse events for the button
+
+        Args:
+            event: pygame event
+
+        Returns:
+            True if button was clicked, False otherwise
+        """
+        if event.type == pygame.MOUSEMOTION:
+            self.is_hovered = self.rect.collidepoint(event.pos)
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1 and self.is_hovered:
+                return True
+        return False
+
+    def draw(self, surface):
+        """Draw the button"""
+        # Choose color based on hover state
+        color = BUTTON_HOVER_COLOR if self.is_hovered else BUTTON_COLOR
+
+        # Draw button background
+        pygame.draw.rect(surface, color, self.rect, border_radius=8)
+        pygame.draw.rect(surface, BLACK, self.rect, width=2, border_radius=8)
+
+        # Draw button text
+        text_surface = self.font.render(self.text, True, BUTTON_TEXT_COLOR)
+        text_rect = text_surface.get_rect(center=self.rect.center)
+        surface.blit(text_surface, text_rect)
+
+
 class YahtzeeGame:
     """Main game class for Yahtzee"""
 
@@ -118,9 +178,21 @@ class YahtzeeGame:
 
         for i in range(5):
             x = start_x + i * (DICE_SIZE + DICE_MARGIN)
-            # Show values 1-5 for demonstration
-            dice = Dice(x, dice_y, value=i + 1)
+            # Initialize with random values
+            dice = Dice(x, dice_y, value=random.randint(1, 6))
             self.dice.append(dice)
+
+        # Create roll button
+        button_width = 150
+        button_height = 50
+        button_x = (WINDOW_WIDTH - button_width) // 2
+        button_y = 500
+        self.roll_button = Button(button_x, button_y, button_width, button_height, "ROLL")
+
+    def roll_dice(self):
+        """Roll all dice"""
+        for die in self.dice:
+            die.roll()
 
     def handle_events(self):
         """Handle pygame events"""
@@ -130,6 +202,10 @@ class YahtzeeGame:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
+
+            # Handle button clicks
+            if self.roll_button.handle_event(event):
+                self.roll_dice()
 
     def update(self):
         """Update game state"""
@@ -149,6 +225,9 @@ class YahtzeeGame:
         # Draw all dice
         for die in self.dice:
             die.draw(self.screen)
+
+        # Draw roll button
+        self.roll_button.draw(self.screen)
 
         # Update display
         pygame.display.flip()
