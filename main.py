@@ -127,6 +127,7 @@ class Button:
         self.text = text
         self.font = pygame.font.Font(None, font_size)
         self.is_hovered = False
+        self.enabled = True
 
     def handle_event(self, event):
         """
@@ -139,16 +140,21 @@ class Button:
             True if button was clicked, False otherwise
         """
         if event.type == pygame.MOUSEMOTION:
-            self.is_hovered = self.rect.collidepoint(event.pos)
+            self.is_hovered = self.rect.collidepoint(event.pos) and self.enabled
         elif event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1 and self.is_hovered:
+            if event.button == 1 and self.is_hovered and self.enabled:
                 return True
         return False
 
     def draw(self, surface):
         """Draw the button"""
-        # Choose color based on hover state
-        color = BUTTON_HOVER_COLOR if self.is_hovered else BUTTON_COLOR
+        # Choose color based on state
+        if not self.enabled:
+            color = GRAY
+        elif self.is_hovered:
+            color = BUTTON_HOVER_COLOR
+        else:
+            color = BUTTON_COLOR
 
         # Draw button background
         pygame.draw.rect(surface, color, self.rect, border_radius=8)
@@ -189,10 +195,19 @@ class YahtzeeGame:
         button_y = 500
         self.roll_button = Button(button_x, button_y, button_width, button_height, "ROLL")
 
+        # Animation state
+        self.is_rolling = False
+        self.roll_timer = 0
+        self.roll_duration = 30  # frames (0.5 seconds at 60 FPS)
+        self.final_values = []
+
     def roll_dice(self):
-        """Roll all dice"""
-        for die in self.dice:
-            die.roll()
+        """Start the dice rolling animation"""
+        if not self.is_rolling:
+            self.is_rolling = True
+            self.roll_timer = 0
+            # Determine final values for each die
+            self.final_values = [random.randint(1, 6) for _ in range(5)]
 
     def handle_events(self):
         """Handle pygame events"""
@@ -203,13 +218,25 @@ class YahtzeeGame:
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
 
-            # Handle button clicks
-            if self.roll_button.handle_event(event):
+            # Handle button clicks (only if not currently rolling)
+            if self.roll_button.handle_event(event) and not self.is_rolling:
                 self.roll_dice()
 
     def update(self):
         """Update game state"""
-        pass
+        # Handle rolling animation
+        if self.is_rolling:
+            self.roll_timer += 1
+
+            # During animation, rapidly change dice values
+            if self.roll_timer < self.roll_duration:
+                for die in self.dice:
+                    die.value = random.randint(1, 6)
+            else:
+                # Animation complete - set final values
+                for i, die in enumerate(self.dice):
+                    die.value = self.final_values[i]
+                self.is_rolling = False
 
     def draw(self):
         """Draw everything to the screen"""
@@ -226,7 +253,8 @@ class YahtzeeGame:
         for die in self.dice:
             die.draw(self.screen)
 
-        # Draw roll button
+        # Draw roll button (disable during rolling animation)
+        self.roll_button.enabled = not self.is_rolling
         self.roll_button.draw(self.screen)
 
         # Update display
