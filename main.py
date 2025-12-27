@@ -500,6 +500,92 @@ class YahtzeeGame:
                     die.value = self.final_values[i]
                 self.is_rolling = False
 
+    def draw_scorecard(self):
+        """Draw the scorecard UI on the right side of screen"""
+        # Scorecard position and dimensions
+        scorecard_x = 620
+        scorecard_y = 150
+        row_height = 28
+        col_width = 180
+
+        # Fonts
+        font = pygame.font.Font(None, 24)
+        font_small = pygame.font.Font(None, 20)
+        font_bold = pygame.font.Font(None, 28)
+
+        y = scorecard_y
+
+        # Upper section header
+        header = font_bold.render("UPPER SECTION", True, BLACK)
+        self.screen.blit(header, (scorecard_x, y))
+        y += row_height + 5
+
+        # Upper section categories
+        upper_cats = [Category.ONES, Category.TWOS, Category.THREES,
+                     Category.FOURS, Category.FIVES, Category.SIXES]
+
+        for cat in upper_cats:
+            # Category name
+            name_text = font.render(cat.value, True, BLACK)
+            self.screen.blit(name_text, (scorecard_x, y))
+
+            # Score (filled or potential)
+            if self.scorecard.is_filled(cat):
+                score = self.scorecard.scores[cat]
+                score_color = BLACK
+            else:
+                score = calculate_score(cat, self.dice)
+                score_color = GRAY
+
+            score_text = font.render(str(score), True, score_color)
+            self.screen.blit(score_text, (scorecard_x + col_width, y))
+            y += row_height
+
+        # Upper section totals
+        y += 5
+        upper_total = self.scorecard.get_upper_section_total()
+        total_text = font.render(f"Total: {upper_total}", True, BLACK)
+        self.screen.blit(total_text, (scorecard_x, y))
+        y += row_height
+
+        bonus = self.scorecard.get_upper_section_bonus()
+        bonus_text = font_small.render(f"Bonus (63+): {bonus}", True, BLACK)
+        self.screen.blit(bonus_text, (scorecard_x, y))
+        y += row_height + 10
+
+        # Lower section header
+        header = font_bold.render("LOWER SECTION", True, BLACK)
+        self.screen.blit(header, (scorecard_x, y))
+        y += row_height + 5
+
+        # Lower section categories
+        lower_cats = [Category.THREE_OF_KIND, Category.FOUR_OF_KIND,
+                     Category.FULL_HOUSE, Category.SMALL_STRAIGHT,
+                     Category.LARGE_STRAIGHT, Category.YAHTZEE, Category.CHANCE]
+
+        for cat in lower_cats:
+            # Category name
+            name_text = font.render(cat.value, True, BLACK)
+            self.screen.blit(name_text, (scorecard_x, y))
+
+            # Score (filled or potential)
+            if self.scorecard.is_filled(cat):
+                score = self.scorecard.scores[cat]
+                score_color = BLACK
+            else:
+                score = calculate_score(cat, self.dice)
+                score_color = GRAY
+
+            score_text = font.render(str(score), True, score_color)
+            self.screen.blit(score_text, (scorecard_x + col_width, y))
+            y += row_height
+
+        # Grand total
+        y += 10
+        grand_total = self.scorecard.get_grand_total()
+        total_text = font_bold.render(f"GRAND TOTAL: {grand_total}", True, BLACK)
+        self.screen.blit(total_text, (scorecard_x, y))
+
     def draw(self):
         """Draw everything to the screen"""
         # Clear screen with white background
@@ -518,6 +604,9 @@ class YahtzeeGame:
         # Draw roll button (disable during rolling animation)
         self.roll_button.enabled = not self.is_rolling
         self.roll_button.draw(self.screen)
+
+        # Draw scorecard
+        self.draw_scorecard()
 
         # Update display
         pygame.display.flip()
