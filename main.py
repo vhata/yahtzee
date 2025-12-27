@@ -5,6 +5,8 @@ Yahtzee Game - A graphical implementation using pygame
 import pygame
 import sys
 import random
+from enum import Enum
+from collections import Counter
 
 # Initialize pygame
 pygame.init()
@@ -28,6 +30,165 @@ BUTTON_TEXT_COLOR = (255, 255, 255)
 DICE_SIZE = 80
 DICE_MARGIN = 20
 DOT_RADIUS = 6
+
+
+class Category(Enum):
+    """Yahtzee score categories"""
+    ONES = "Ones"
+    TWOS = "Twos"
+    THREES = "Threes"
+    FOURS = "Fours"
+    FIVES = "Fives"
+    SIXES = "Sixes"
+    THREE_OF_KIND = "3 of a Kind"
+    FOUR_OF_KIND = "4 of a Kind"
+    FULL_HOUSE = "Full House"
+    SMALL_STRAIGHT = "Small Straight"
+    LARGE_STRAIGHT = "Large Straight"
+    YAHTZEE = "Yahtzee"
+    CHANCE = "Chance"
+
+
+class Scorecard:
+    """Manages the Yahtzee scorecard"""
+
+    def __init__(self):
+        """Initialize an empty scorecard"""
+        # Dictionary to store scores for each category (None = not filled)
+        self.scores = {category: None for category in Category}
+
+    def is_filled(self, category):
+        """Check if a category has been filled"""
+        return self.scores[category] is not None
+
+    def set_score(self, category, score):
+        """Set the score for a category"""
+        if not self.is_filled(category):
+            self.scores[category] = score
+
+    def get_upper_section_total(self):
+        """Calculate total for upper section (Ones through Sixes)"""
+        upper_categories = [Category.ONES, Category.TWOS, Category.THREES,
+                           Category.FOURS, Category.FIVES, Category.SIXES]
+        total = 0
+        for cat in upper_categories:
+            if self.scores[cat] is not None:
+                total += self.scores[cat]
+        return total
+
+    def get_upper_section_bonus(self):
+        """Calculate bonus (35 points if upper section >= 63)"""
+        return 35 if self.get_upper_section_total() >= 63 else 0
+
+    def get_lower_section_total(self):
+        """Calculate total for lower section"""
+        lower_categories = [Category.THREE_OF_KIND, Category.FOUR_OF_KIND,
+                           Category.FULL_HOUSE, Category.SMALL_STRAIGHT,
+                           Category.LARGE_STRAIGHT, Category.YAHTZEE, Category.CHANCE]
+        total = 0
+        for cat in lower_categories:
+            if self.scores[cat] is not None:
+                total += self.scores[cat]
+        return total
+
+    def get_grand_total(self):
+        """Calculate grand total including bonus"""
+        return (self.get_upper_section_total() +
+                self.get_upper_section_bonus() +
+                self.get_lower_section_total())
+
+    def is_complete(self):
+        """Check if all categories are filled"""
+        return all(score is not None for score in self.scores.values())
+
+
+def count_values(dice):
+    """
+    Count occurrences of each die value
+
+    Args:
+        dice: List of Dice objects
+
+    Returns:
+        Counter object with die values as keys
+    """
+    values = [die.value for die in dice]
+    return Counter(values)
+
+
+def has_n_of_kind(dice, n):
+    """
+    Check if dice contain at least n of the same value
+
+    Args:
+        dice: List of Dice objects
+        n: Number of matching dice required
+
+    Returns:
+        True if at least n dice have the same value
+    """
+    counts = count_values(dice)
+    return max(counts.values()) >= n
+
+
+def has_full_house(dice):
+    """
+    Check if dice form a full house (3 of one value, 2 of another)
+
+    Args:
+        dice: List of Dice objects
+
+    Returns:
+        True if dice form a full house
+    """
+    counts = count_values(dice)
+    sorted_counts = sorted(counts.values(), reverse=True)
+    return sorted_counts == [3, 2]
+
+
+def has_small_straight(dice):
+    """
+    Check if dice contain a small straight (4 consecutive values)
+
+    Args:
+        dice: List of Dice objects
+
+    Returns:
+        True if dice contain a small straight
+    """
+    values = set(die.value for die in dice)
+    # Possible small straights: 1-2-3-4, 2-3-4-5, 3-4-5-6
+    small_straights = [{1, 2, 3, 4}, {2, 3, 4, 5}, {3, 4, 5, 6}]
+    return any(straight.issubset(values) for straight in small_straights)
+
+
+def has_large_straight(dice):
+    """
+    Check if dice contain a large straight (5 consecutive values)
+
+    Args:
+        dice: List of Dice objects
+
+    Returns:
+        True if dice contain a large straight
+    """
+    values = set(die.value for die in dice)
+    # Possible large straights: 1-2-3-4-5, 2-3-4-5-6
+    large_straights = [{1, 2, 3, 4, 5}, {2, 3, 4, 5, 6}]
+    return any(straight == values for straight in large_straights)
+
+
+def has_yahtzee(dice):
+    """
+    Check if all dice have the same value
+
+    Args:
+        dice: List of Dice objects
+
+    Returns:
+        True if all dice match
+    """
+    return has_n_of_kind(dice, 5)
 
 
 class Dice:
@@ -224,6 +385,9 @@ class YahtzeeGame:
         self.roll_timer = 0
         self.roll_duration = 30  # frames (0.5 seconds at 60 FPS)
         self.final_values = []
+
+        # Scorecard
+        self.scorecard = Scorecard()
 
     def roll_dice(self):
         """Start the dice rolling animation"""
