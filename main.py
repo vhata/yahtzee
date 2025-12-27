@@ -191,6 +191,66 @@ def has_yahtzee(dice):
     return has_n_of_kind(dice, 5)
 
 
+def calculate_score(category, dice):
+    """
+    Calculate the score for a given category and dice
+
+    Args:
+        category: Category enum value
+        dice: List of Dice objects
+
+    Returns:
+        Integer score for the category (0 if doesn't qualify)
+    """
+    values = [die.value for die in dice]
+    total = sum(values)
+    counts = count_values(dice)
+
+    # Upper section - sum of matching dice
+    if category == Category.ONES:
+        return counts[1] * 1
+    elif category == Category.TWOS:
+        return counts[2] * 2
+    elif category == Category.THREES:
+        return counts[3] * 3
+    elif category == Category.FOURS:
+        return counts[4] * 4
+    elif category == Category.FIVES:
+        return counts[5] * 5
+    elif category == Category.SIXES:
+        return counts[6] * 6
+
+    # Three of a kind - sum of all dice if at least 3 match
+    elif category == Category.THREE_OF_KIND:
+        return total if has_n_of_kind(dice, 3) else 0
+
+    # Four of a kind - sum of all dice if at least 4 match
+    elif category == Category.FOUR_OF_KIND:
+        return total if has_n_of_kind(dice, 4) else 0
+
+    # Full house - 25 points
+    elif category == Category.FULL_HOUSE:
+        return 25 if has_full_house(dice) else 0
+
+    # Small straight - 30 points
+    elif category == Category.SMALL_STRAIGHT:
+        return 30 if has_small_straight(dice) else 0
+
+    # Large straight - 40 points
+    elif category == Category.LARGE_STRAIGHT:
+        return 40 if has_large_straight(dice) else 0
+
+    # Yahtzee - 50 points
+    elif category == Category.YAHTZEE:
+        return 50 if has_yahtzee(dice) else 0
+
+    # Chance - sum of all dice
+    elif category == Category.CHANCE:
+        return total
+
+    return 0
+
+
 class Dice:
     """Represents a single die with graphical rendering"""
 
