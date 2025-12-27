@@ -45,17 +45,41 @@ class Dice:
         self.x = x
         self.y = y
         self.value = value
+        self.held = False
 
     def roll(self):
         """Roll the die to a random value between 1 and 6"""
         self.value = random.randint(1, 6)
+
+    def contains_point(self, pos):
+        """
+        Check if a point is inside the die
+
+        Args:
+            pos: Tuple of (x, y) coordinates
+
+        Returns:
+            True if point is inside die, False otherwise
+        """
+        dice_rect = pygame.Rect(self.x, self.y, DICE_SIZE, DICE_SIZE)
+        return dice_rect.collidepoint(pos)
+
+    def toggle_held(self):
+        """Toggle the held state of the die"""
+        self.held = not self.held
 
     def draw(self, surface):
         """Draw the die with its current value"""
         # Draw dice background
         dice_rect = pygame.Rect(self.x, self.y, DICE_SIZE, DICE_SIZE)
         pygame.draw.rect(surface, DICE_COLOR, dice_rect, border_radius=10)
-        pygame.draw.rect(surface, BLACK, dice_rect, width=2, border_radius=10)
+
+        # Draw border - thicker and colored if held
+        if self.held:
+            # Green highlight for held dice
+            pygame.draw.rect(surface, (50, 200, 50), dice_rect, width=5, border_radius=10)
+        else:
+            pygame.draw.rect(surface, BLACK, dice_rect, width=2, border_radius=10)
 
         # Draw dots based on value
         self._draw_dots(surface)
@@ -206,8 +230,13 @@ class YahtzeeGame:
         if not self.is_rolling:
             self.is_rolling = True
             self.roll_timer = 0
-            # Determine final values for each die
-            self.final_values = [random.randint(1, 6) for _ in range(5)]
+            # Determine final values for each die (only for unheld dice)
+            self.final_values = []
+            for die in self.dice:
+                if die.held:
+                    self.final_values.append(die.value)  # Keep current value
+                else:
+                    self.final_values.append(random.randint(1, 6))  # New random value
 
     def handle_events(self):
         """Handle pygame events"""
@@ -217,6 +246,14 @@ class YahtzeeGame:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:  # Left click
+                    # Check if any die was clicked (only when not rolling)
+                    if not self.is_rolling:
+                        for die in self.dice:
+                            if die.contains_point(event.pos):
+                                die.toggle_held()
+                                break
 
             # Handle button clicks (only if not currently rolling)
             if self.roll_button.handle_event(event) and not self.is_rolling:
@@ -228,10 +265,11 @@ class YahtzeeGame:
         if self.is_rolling:
             self.roll_timer += 1
 
-            # During animation, rapidly change dice values
+            # During animation, rapidly change dice values (only for unheld dice)
             if self.roll_timer < self.roll_duration:
                 for die in self.dice:
-                    die.value = random.randint(1, 6)
+                    if not die.held:
+                        die.value = random.randint(1, 6)
             else:
                 # Animation complete - set final values
                 for i, die in enumerate(self.dice):
