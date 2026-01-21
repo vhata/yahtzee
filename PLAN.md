@@ -223,3 +223,250 @@ This methodology ensures:
 5. **Workflow Documentation**: Created CLAUDE.md to document the development process and workflow for future AI agents
 
 **Total Commits**: 16 (13 feature steps + 1 visual polish + 1 bug fix commit + 1 workflow documentation)
+
+---
+
+# Phase 2: Architecture Refactoring for Testability
+
+After completing the initial implementation and bug fixes, the game underwent a major refactoring to separate game logic from GUI rendering, enabling unit testing without pygame dependencies.
+
+## Motivation
+
+**Problem**: Game logic is tightly coupled with pygame rendering code in main.py (808 lines):
+- `Dice` class mixes state (value, held) with rendering (draw method)
+- `YahtzeeGame` class combines state management, game logic, event handling, and rendering
+- Impossible to test game rules without creating a pygame window
+- Difficult to add features like AI players, replay system, or alternative UIs
+
+**Goal**: Create a testable architecture where:
+- Pure game logic exists in separate module with no pygame dependencies
+- GUI layer calls logic functions and renders results
+- Complete game can be tested headlessly with unit tests
+- Backend state updates are testable independently of visual rendering
+
+## Refactoring Architecture
+
+### New Structure
+- **game_engine.py**: Pure Python game logic, immutable state, no pygame
+  - `DieState` dataclass: value (1-6) + held flag
+  - `GameState` dataclass: 5 dice, scorecard, rolls_used, current_round, game_over
+  - Pure functions: `roll_dice()`, `toggle_die_hold()`, `select_category()`, etc.
+  - All scoring functions (moved from main.py)
+
+- **main.py**: Thin GUI layer (reduces from 808 to ~400 lines)
+  - `DiceSprite` class: Visual rendering only (position + draw)
+  - `YahtzeeGame` class: Delegates logic to game_engine, handles events and rendering
+
+- **test_game_engine.py**: Comprehensive unit tests
+  - 30+ tests covering all game logic
+  - No pygame dependencies - runs headlessly
+  - Tests state transitions, scoring, game flow
+
+### Key Design Decisions
+- **Immutable State (Copy-on-Write)**: All game actions return new GameState
+- **Separation of Concerns**: DieState (logic) vs DiceSprite (rendering)
+- **Pure Functions**: Testable without side effects
+- **Duck Typing**: Scoring functions work with both Dice and DieState objects
+
+---
+
+## Refactoring Step 1: Create game_engine.py - Data Structures
+
+Create pure game logic module with data structures.
+
+**Actions**:
+- Create `game_engine.py`
+- Move from main.py:
+  - `Category` enum
+  - `Scorecard` class
+  - All scoring functions: `count_values`, `has_*`, `calculate_score`
+- Add new immutable data structures:
+  - `DieState(value, held)` - frozen dataclass with `roll()` and `toggle_held()` methods
+  - `GameState(dice, scorecard, rolls_used, current_round, game_over)` - frozen dataclass
+  - `GameState.create_initial()` - static factory method
+- Update scoring functions: Work with any object with `.value` attribute (duck typing)
+- Add `Scorecard.copy()` and `Scorecard.with_score()` helper methods
+
+**Testing**:
+- Import in main.py: `from game_engine import Category, Scorecard, calculate_score`
+- Run game: `uv run python main.py`
+- Game should work identically (just using imported versions)
+
+**Deliverable**: game_engine.py exists with pure data structures, main.py still works
+
+---
+
+## Refactoring Step 2: Add Pure Game Action Functions
+
+Add game logic functions to game_engine.py.
+
+**Actions**:
+Add to game_engine.py:
+- `roll_dice(state: GameState) -> GameState` - Roll unheld dice, increment rolls_used
+- `toggle_die_hold(state: GameState, die_index: int) -> GameState` - Toggle hold status
+- `select_category(state: GameState, category: Category) -> GameState` - Lock score, advance round, reset turn
+- `can_roll(state: GameState) -> bool` - Check if player can roll
+- `can_select_category(state: GameState, category: Category) -> bool` - Check if category available
+- `reset_game() -> GameState` - Return fresh GameState
+
+All functions return new immutable GameState (copy-on-write pattern).
+
+**Testing**:
+- Run game: `uv run python main.py`
+- Game should still work (functions not used yet)
+
+**Deliverable**: game_engine.py has complete game logic API
+
+---
+
+## Refactoring Step 3: Write Comprehensive Unit Tests
+
+Create test suite for game engine.
+
+**Actions**:
+- Update `pyproject.toml`: Add `pytest>=7.0.0` to dev dependencies
+- Create `test_game_engine.py` with tests:
+  - Data structure tests: DieState, GameState immutability
+  - Roll dice tests: Increments counter, respects held, max 3 rolls
+  - Toggle hold tests: Updates die, invalid index handling
+  - Category selection tests: Updates scorecard, advances round, resets turn
+  - Game over tests: Ends after 13 categories
+  - Scoring tests: All 13 categories
+  - Integration tests: Complete 13-round game flow, held dice persistence
+
+**Testing**:
+- Install dev dependencies: `uv sync --extra dev`
+- Run tests: `uv run pytest test_game_engine.py -v`
+- All tests should pass
+
+**Deliverable**: Comprehensive test suite proving game logic works headlessly
+
+---
+
+## Refactoring Step 4: Add DiceSprite Class
+
+Create rendering-only class for dice visualization.
+
+**Actions**:
+- Create `DiceSprite` class in main.py:
+  - `__init__(x, y)` - Store position only
+  - `draw(surface, die_state, offset_x, offset_y)` - Render based on DieState
+  - `contains_point(pos)` - Click detection
+  - `_draw_dots()` - Move dot rendering logic from Dice class
+- Keep old `Dice` class temporarily for compatibility
+
+**Testing**:
+- Run game: `uv run python main.py`
+- Game should work identically
+
+**Deliverable**: DiceSprite class ready for YahtzeeGame refactoring
+
+---
+
+## Refactoring Step 5: Refactor YahtzeeGame to Use GameState
+
+Major refactoring - update YahtzeeGame to delegate all logic to game_engine.
+
+**Actions**:
+1. Update imports to use game_engine functions
+2. Replace state variables with `self.state = GameState.create_initial()`
+3. Create `self.dice_sprites` for visual rendering (replace `self.dice`)
+4. Update `roll_dice()` to call `engine_roll_dice(self.state)`
+5. Update `update()` to commit state after animation
+6. Update event handlers to use engine functions for die clicks and category selection
+7. Update `draw()` to render based on `self.state`
+8. Update `draw_scorecard()` and `draw_game_over()` to use `self.state`
+9. Remove old `Dice` class and direct state variables
+
+**Testing**:
+- Run game: `uv run python main.py`
+- Complete playthrough: roll, hold, select categories, verify behavior unchanged
+
+**Deliverable**: main.py uses GameState, all logic delegated to game_engine
+
+---
+
+## Refactoring Step 6: Clean Up and Add Integration Tests
+
+Remove duplication and add high-level integration tests.
+
+**Actions**:
+- Remove duplicated code between files
+- Verify all imports correct
+- Add integration tests:
+  - `test_complete_game_flow()` - Play 13 full rounds programmatically
+  - `test_held_dice_across_rolls()` - Verify holding persists
+
+**Testing**:
+- Run all tests: `uv run pytest test_game_engine.py -v`
+- Run game: Full manual playthrough
+
+**Deliverable**: Clean codebase, integration tests verify complete game flow
+
+---
+
+## Refactoring Step 7: Add Testing Documentation
+
+Document testing approach and create manual testing checklist.
+
+**Actions**:
+- Create `README_TESTING.md`:
+  - How to run tests
+  - Test organization
+  - Manual GUI testing checklist
+  - Coverage goals
+
+**Testing**:
+- Run tests with manual checklist verification
+
+**Deliverable**: Testing documentation
+
+---
+
+## Refactoring Step 8: Final Verification and Documentation
+
+Update project documentation and verify complete refactoring.
+
+**Actions**:
+- Update `README.md`: Add architecture section, project structure, testing instructions
+- Update `pyproject.toml`: Add `pytest-cov>=4.0.0` to dev dependencies
+- Run final verification: All tests pass, complete manual playthrough
+
+**Testing**:
+- All unit tests pass
+- No regressions in behavior
+
+**Deliverable**: Fully refactored, tested, documented architecture
+
+---
+
+## Progress Tracking - Refactoring Steps
+
+- [ ] Refactoring Step 1: Create game_engine.py - Data Structures
+- [ ] Refactoring Step 2: Add Pure Game Action Functions
+- [ ] Refactoring Step 3: Write Comprehensive Unit Tests
+- [ ] Refactoring Step 4: Add DiceSprite Class
+- [ ] Refactoring Step 5: Refactor YahtzeeGame to Use GameState
+- [ ] Refactoring Step 6: Clean Up and Add Integration Tests
+- [ ] Refactoring Step 7: Add Testing Documentation
+- [ ] Refactoring Step 8: Final Verification and Documentation
+
+---
+
+## Refactoring Benefits
+
+**Testability**:
+- Can test all game logic without pygame window
+- Fast test execution (no graphics initialization)
+- 30+ unit tests covering all logic paths
+
+**Maintainability**:
+- Clear separation of concerns (logic vs rendering)
+- Easy to locate bugs (state logic vs visual bugs)
+- Simpler code in each layer
+
+**Extensibility**:
+- Can add AI players (test strategies without GUI)
+- Can create alternative UIs (terminal, web)
+- Can implement replay/undo systems
+- Can run automated playtesting
