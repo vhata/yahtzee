@@ -151,6 +151,121 @@ class Dice:
             pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y + offset), DOT_RADIUS)
 
 
+class DiceSprite:
+    """Visual representation of a die - handles only positioning and rendering"""
+
+    def __init__(self, x, y):
+        """
+        Initialize a dice sprite at a position.
+
+        Args:
+            x: X position on screen
+            y: Y position on screen
+        """
+        self.x = x
+        self.y = y
+
+    def contains_point(self, pos):
+        """
+        Check if a point is inside the die.
+
+        Args:
+            pos: Tuple of (x, y) coordinates
+
+        Returns:
+            True if point is inside die, False otherwise
+        """
+        dice_rect = pygame.Rect(self.x, self.y, DICE_SIZE, DICE_SIZE)
+        return dice_rect.collidepoint(pos)
+
+    def draw(self, surface, die_state, offset_x=0, offset_y=0):
+        """
+        Draw the die based on its state.
+
+        Args:
+            surface: pygame surface to draw on
+            die_state: DieState object with value and held status
+            offset_x: X offset for animation effects
+            offset_y: Y offset for animation effects
+        """
+        # Apply offsets for animation effects
+        x = self.x + offset_x
+        y = self.y + offset_y
+
+        # Draw subtle shadow for depth
+        shadow_rect = pygame.Rect(x + 3, y + 3, DICE_SIZE, DICE_SIZE)
+        pygame.draw.rect(surface, (200, 200, 200, 50), shadow_rect, border_radius=10)
+
+        # Draw dice background
+        dice_rect = pygame.Rect(x, y, DICE_SIZE, DICE_SIZE)
+        pygame.draw.rect(surface, DICE_COLOR, dice_rect, border_radius=10)
+
+        # Draw border - thicker and colored if held
+        if die_state.held:
+            # Green highlight for held dice
+            pygame.draw.rect(surface, (50, 200, 50), dice_rect, width=5, border_radius=10)
+        else:
+            pygame.draw.rect(surface, (100, 100, 100), dice_rect, width=2, border_radius=10)
+
+        # Draw dots based on value
+        self._draw_dots(surface, die_state.value, offset_x, offset_y)
+
+    def _draw_dots(self, surface, value, offset_x=0, offset_y=0):
+        """
+        Draw the dots/pips on the die face.
+
+        Args:
+            surface: pygame surface to draw on
+            value: Die value (1-6)
+            offset_x: X offset for animation effects
+            offset_y: Y offset for animation effects
+        """
+        # Calculate dot positions relative to die center
+        center_x = self.x + DICE_SIZE // 2 + offset_x
+        center_y = self.y + DICE_SIZE // 2 + offset_y
+        offset = DICE_SIZE // 4
+
+        # Define dot positions for each value
+        # 1: center
+        if value == 1:
+            pygame.draw.circle(surface, DOT_COLOR, (center_x, center_y), DOT_RADIUS)
+
+        # 2: diagonal top-left to bottom-right
+        elif value == 2:
+            pygame.draw.circle(surface, DOT_COLOR, (center_x - offset, center_y - offset), DOT_RADIUS)
+            pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y + offset), DOT_RADIUS)
+
+        # 3: diagonal plus center
+        elif value == 3:
+            pygame.draw.circle(surface, DOT_COLOR, (center_x - offset, center_y - offset), DOT_RADIUS)
+            pygame.draw.circle(surface, DOT_COLOR, (center_x, center_y), DOT_RADIUS)
+            pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y + offset), DOT_RADIUS)
+
+        # 4: four corners
+        elif value == 4:
+            pygame.draw.circle(surface, DOT_COLOR, (center_x - offset, center_y - offset), DOT_RADIUS)
+            pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y - offset), DOT_RADIUS)
+            pygame.draw.circle(surface, DOT_COLOR, (center_x - offset, center_y + offset), DOT_RADIUS)
+            pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y + offset), DOT_RADIUS)
+
+        # 5: four corners plus center
+        elif value == 5:
+            pygame.draw.circle(surface, DOT_COLOR, (center_x - offset, center_y - offset), DOT_RADIUS)
+            pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y - offset), DOT_RADIUS)
+            pygame.draw.circle(surface, DOT_COLOR, (center_x, center_y), DOT_RADIUS)
+            pygame.draw.circle(surface, DOT_COLOR, (center_x - offset, center_y + offset), DOT_RADIUS)
+            pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y + offset), DOT_RADIUS)
+
+        # 6: two columns of three
+        elif value == 6:
+            pygame.draw.circle(surface, DOT_COLOR, (center_x - offset, center_y - offset), DOT_RADIUS)
+            pygame.draw.circle(surface, DOT_COLOR, (center_x - offset, center_y), DOT_RADIUS)
+            pygame.draw.circle(surface, DOT_COLOR, (center_x - offset, center_y + offset), DOT_RADIUS)
+            pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y - offset), DOT_RADIUS)
+            pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y), DOT_RADIUS)
+            pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y + offset), DOT_RADIUS)
+
+
 class Button:
     """A simple button class for UI interactions"""
 
