@@ -455,6 +455,10 @@ class YahtzeeGame:
         # Turn management
         self.rolls_used = 0
 
+        # Score selection tracking
+        self.category_rects = {}  # Maps Category to pygame.Rect for click detection
+        self.hovered_category = None
+
     def start_new_turn(self):
         """Start a new turn - reset rolls and held dice"""
         self.rolls_used = 0
@@ -483,10 +487,28 @@ class YahtzeeGame:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
+            elif event.type == pygame.MOUSEMOTION:
+                # Check hover over scorecard categories
+                self.hovered_category = None
+                for cat, rect in self.category_rects.items():
+                    if rect.collidepoint(event.pos) and not self.scorecard.is_filled(cat):
+                        self.hovered_category = cat
+                        break
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
-                    # Check if any die was clicked (only when not rolling)
-                    if not self.is_rolling:
+                    # Check if scorecard category was clicked
+                    clicked_category = False
+                    for cat, rect in self.category_rects.items():
+                        if rect.collidepoint(event.pos) and not self.scorecard.is_filled(cat):
+                            # Lock in the score
+                            score = calculate_score(cat, self.dice)
+                            self.scorecard.set_score(cat, score)
+                            self.start_new_turn()
+                            clicked_category = True
+                            break
+
+                    # Check if any die was clicked (only when not rolling and didn't click category)
+                    if not clicked_category and not self.is_rolling:
                         for die in self.dice:
                             if die.contains_point(event.pos):
                                 die.toggle_held()
@@ -538,6 +560,14 @@ class YahtzeeGame:
                      Category.FOURS, Category.FIVES, Category.SIXES]
 
         for cat in upper_cats:
+            # Create clickable rect for this category
+            cat_rect = pygame.Rect(scorecard_x - 5, y - 2, col_width + 50, row_height)
+            self.category_rects[cat] = cat_rect
+
+            # Draw hover highlight for unfilled categories
+            if not self.scorecard.is_filled(cat) and self.hovered_category == cat:
+                pygame.draw.rect(self.screen, (220, 240, 255), cat_rect, border_radius=5)
+
             # Category name
             name_text = font.render(cat.value, True, BLACK)
             self.screen.blit(name_text, (scorecard_x, y))
@@ -577,6 +607,14 @@ class YahtzeeGame:
                      Category.LARGE_STRAIGHT, Category.YAHTZEE, Category.CHANCE]
 
         for cat in lower_cats:
+            # Create clickable rect for this category
+            cat_rect = pygame.Rect(scorecard_x - 5, y - 2, col_width + 50, row_height)
+            self.category_rects[cat] = cat_rect
+
+            # Draw hover highlight for unfilled categories
+            if not self.scorecard.is_filled(cat) and self.hovered_category == cat:
+                pygame.draw.rect(self.screen, (220, 240, 255), cat_rect, border_radius=5)
+
             # Category name
             name_text = font.render(cat.value, True, BLACK)
             self.screen.blit(name_text, (scorecard_x, y))
