@@ -294,3 +294,130 @@ class GameState:
             current_round=1,
             game_over=False
         )
+
+
+# Game Action Functions
+
+def roll_dice(state: GameState) -> GameState:
+    """
+    Roll all unheld dice and increment roll counter.
+
+    Returns new GameState with updated dice and rolls_used.
+    If already rolled 3 times or game is over, returns state unchanged.
+
+    Args:
+        state: Current game state
+
+    Returns:
+        New GameState with rolled dice
+    """
+    if state.rolls_used >= 3 or state.game_over:
+        return state
+
+    new_dice = tuple(die.roll() for die in state.dice)
+    return replace(state,
+                   dice=new_dice,
+                   rolls_used=state.rolls_used + 1)
+
+
+def toggle_die_hold(state: GameState, die_index: int) -> GameState:
+    """
+    Toggle hold status of a specific die.
+
+    Returns new GameState with updated die.
+    If index is invalid or game is over, returns state unchanged.
+
+    Args:
+        state: Current game state
+        die_index: Index of die to toggle (0-4)
+
+    Returns:
+        New GameState with die hold toggled
+    """
+    if not (0 <= die_index < 5) or state.game_over:
+        return state
+
+    dice_list = list(state.dice)
+    dice_list[die_index] = dice_list[die_index].toggle_held()
+    return replace(state, dice=tuple(dice_list))
+
+
+def select_category(state: GameState, category: Category) -> GameState:
+    """
+    Lock in score for a category and advance to next turn.
+
+    Calculates score for the category, updates scorecard, advances round,
+    and resets turn state (unholds all dice, resets rolls_used).
+    If all categories filled, sets game_over to True.
+
+    Args:
+        state: Current game state
+        category: Category to score
+
+    Returns:
+        New GameState with category scored and turn advanced
+    """
+    # Validate category is available
+    if state.scorecard.is_filled(category) or state.game_over:
+        return state
+
+    # Calculate and set score
+    score = calculate_score(category, state.dice)
+    new_scorecard = state.scorecard.with_score(category, score)
+
+    # Check if game is complete
+    is_complete = new_scorecard.is_complete()
+
+    if is_complete:
+        return replace(state,
+                      scorecard=new_scorecard,
+                      game_over=True)
+    else:
+        # Start new turn - reset dice holds and rolls
+        new_dice = tuple(replace(die, held=False) for die in state.dice)
+        return replace(state,
+                      dice=new_dice,
+                      scorecard=new_scorecard,
+                      rolls_used=0,
+                      current_round=state.current_round + 1)
+
+
+def can_roll(state: GameState) -> bool:
+    """
+    Check if player can roll dice.
+
+    Player can roll if game is not over and hasn't used all 3 rolls.
+
+    Args:
+        state: Current game state
+
+    Returns:
+        True if can roll, False otherwise
+    """
+    return not state.game_over and state.rolls_used < 3
+
+
+def can_select_category(state: GameState, category: Category) -> bool:
+    """
+    Check if category is available to select.
+
+    Category is available if game is not over and category not yet filled.
+
+    Args:
+        state: Current game state
+        category: Category to check
+
+    Returns:
+        True if category can be selected, False otherwise
+    """
+    return not state.game_over and not state.scorecard.is_filled(category)
+
+
+def reset_game() -> GameState:
+    """
+    Create a fresh game state (equivalent to starting over).
+
+    Returns:
+        New GameState with initial values
+    """
+    return GameState.create_initial()

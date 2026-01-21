@@ -443,7 +443,7 @@ Update project documentation and verify complete refactoring.
 ## Progress Tracking - Refactoring Steps
 
 - [x] Refactoring Step 1: Create game_engine.py - Data Structures
-- [ ] Refactoring Step 2: Add Pure Game Action Functions
+- [x] Refactoring Step 2: Add Pure Game Action Functions
 - [ ] Refactoring Step 3: Write Comprehensive Unit Tests
 - [ ] Refactoring Step 4: Add DiceSprite Class
 - [ ] Refactoring Step 5: Refactor YahtzeeGame to Use GameState
