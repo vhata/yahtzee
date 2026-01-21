@@ -459,6 +459,10 @@ class YahtzeeGame:
         self.category_rects = {}  # Maps Category to pygame.Rect for click detection
         self.hovered_category = None
 
+        # Game flow
+        self.current_round = 1
+        self.game_over = False
+
     def start_new_turn(self):
         """Start a new turn - reset rolls and held dice"""
         self.rolls_used = 0
@@ -467,7 +471,7 @@ class YahtzeeGame:
 
     def roll_dice(self):
         """Start the dice rolling animation"""
-        if not self.is_rolling and self.rolls_used < MAX_ROLLS_PER_TURN:
+        if not self.is_rolling and self.rolls_used < MAX_ROLLS_PER_TURN and not self.game_over:
             self.is_rolling = True
             self.roll_timer = 0
             self.rolls_used += 1
@@ -488,12 +492,13 @@ class YahtzeeGame:
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
             elif event.type == pygame.MOUSEMOTION:
-                # Check hover over scorecard categories
+                # Check hover over scorecard categories (only if game not over)
                 self.hovered_category = None
-                for cat, rect in self.category_rects.items():
-                    if rect.collidepoint(event.pos) and not self.scorecard.is_filled(cat):
-                        self.hovered_category = cat
-                        break
+                if not self.game_over:
+                    for cat, rect in self.category_rects.items():
+                        if rect.collidepoint(event.pos) and not self.scorecard.is_filled(cat):
+                            self.hovered_category = cat
+                            break
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
                     # Check if scorecard category was clicked
@@ -503,12 +508,19 @@ class YahtzeeGame:
                             # Lock in the score
                             score = calculate_score(cat, self.dice)
                             self.scorecard.set_score(cat, score)
-                            self.start_new_turn()
+
+                            # Check if game is complete
+                            if self.scorecard.is_complete():
+                                self.game_over = True
+                            else:
+                                self.current_round += 1
+                                self.start_new_turn()
+
                             clicked_category = True
                             break
 
-                    # Check if any die was clicked (only when not rolling and didn't click category)
-                    if not clicked_category and not self.is_rolling:
+                    # Check if any die was clicked (only when not rolling, didn't click category, and game not over)
+                    if not clicked_category and not self.is_rolling and not self.game_over:
                         for die in self.dice:
                             if die.contains_point(event.pos):
                                 die.toggle_held()
@@ -648,12 +660,17 @@ class YahtzeeGame:
         title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, 100))
         self.screen.blit(title, title_rect)
 
+        # Draw round indicator
+        round_font = pygame.font.Font(None, 36)
+        round_text = round_font.render(f"Round {self.current_round}/13", True, BLACK)
+        self.screen.blit(round_text, (50, 50))
+
         # Draw all dice
         for die in self.dice:
             die.draw(self.screen)
 
-        # Draw roll button (disable during rolling animation or if out of rolls)
-        self.roll_button.enabled = not self.is_rolling and self.rolls_used < MAX_ROLLS_PER_TURN
+        # Draw roll button (disable during rolling animation, out of rolls, or game over)
+        self.roll_button.enabled = not self.is_rolling and self.rolls_used < MAX_ROLLS_PER_TURN and not self.game_over
         self.roll_button.draw(self.screen)
 
         # Draw roll count
