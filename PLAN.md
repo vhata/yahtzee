@@ -130,21 +130,70 @@ This document outlines the step-by-step plan for building a Yahtzee game using p
 
 ---
 
-## Progress Tracking
+## Progress Tracking - Development Steps
 
-- [ ] Step 1: Project Setup
-- [ ] Step 2: Basic Pygame Window
-- [ ] Step 3: Dice Class & Graphics
-- [ ] Step 4: Dice Rolling Mechanics
-- [ ] Step 5: Dice Selection UI
-- [ ] Step 6: Scorecard Data Structure
-- [ ] Step 7: Score Calculation Logic
-- [ ] Step 8: Scorecard UI Rendering
-- [ ] Step 9: Turn Management
-- [ ] Step 10: Score Selection
-- [ ] Step 11: Game Flow
-- [ ] Step 12: Game Over Screen
-- [ ] Step 13: Visual Polish
+- [x] Step 1: Project Setup
+- [x] Step 2: Basic Pygame Window
+- [x] Step 3: Dice Class & Graphics
+- [x] Step 4: Dice Rolling Mechanics
+- [x] Step 5: Dice Selection UI
+- [x] Step 6: Scorecard Data Structure
+- [x] Step 7: Score Calculation Logic
+- [x] Step 8: Scorecard UI Rendering
+- [x] Step 9: Turn Management
+- [x] Step 10: Score Selection
+- [x] Step 11: Game Flow
+- [x] Step 12: Game Over Screen
+- [x] Step 13: Visual Polish
+
+---
+
+# Quality Assurance & Bug Fixes
+
+After completing all 13 development steps, the game underwent QA testing to identify and fix issues.
+
+---
+
+## Bug Fix 1: Dice Layout Overlap (commit d7d5f2a)
+
+**Issue Discovered**: 2.5 dice were hidden behind the scorecard panel
+
+**Root Cause**: Dice were centered horizontally on screen, causing overlap with the right-side scorecard panel
+
+**Fix Applied**:
+- Repositioned dice to left side of screen (starting at x=80 instead of centered)
+- Moved roll button to align with dice area
+- Adjusted "Rolls left" text position to left side
+- All UI elements now properly spaced without overlap
+
+**Deliverable**: All 5 dice fully visible on left side, scorecard clearly visible on right
+
+---
+
+## Bug Fix 2: Roll Animation Not Pronounced (commit d7d5f2a)
+
+**Issue Discovered**: Roll animation was too fast and subtle - hard to notice dice were rolling
+
+**Root Cause**:
+- Animation duration only 0.5 seconds (30 frames at 60 FPS)
+- Only visual feedback was rapidly changing numbers
+- No physical motion or shake effect
+
+**Fix Applied**:
+- Increased animation duration from 30 to 60 frames (0.5s → 1.0s)
+- Added shake/wobble effect to unheld dice during rolling animation
+- Implemented sine/cosine wave calculations for smooth shaking motion
+- Held dice remain stationary during animation (reinforces selection feedback)
+- Added math module import for animation calculations
+
+**Deliverable**: Dice have pronounced, satisfying shake effect while rolling; clear visual feedback that rolling is happening
+
+---
+
+## Progress Tracking - Bug Fixes
+
+- [x] Bug Fix 1: Dice Layout Overlap
+- [x] Bug Fix 2: Roll Animation Not Pronounced
 
 ---
 
@@ -155,3 +204,20 @@ Each step is designed to be:
 - Committable to git
 - Buildable on previous steps
 - Small enough to complete in one session
+
+## Development Process
+
+This project followed a structured development approach:
+
+1. **Planning**: Created comprehensive step-by-step plan
+2. **Implementation**: Built features incrementally with git commits per step (Steps 1-13)
+3. **Quality Assurance**: Tested complete game to identify issues
+4. **Bug Fixes**: Addressed discovered issues with documented fixes
+
+This methodology ensures:
+- Clear progress tracking
+- Easy rollback if needed
+- Documented decision history
+- Quality validation before completion
+
+**Total Commits**: 15 (13 feature steps + 1 visual polish + 1 bug fix commit)
