@@ -443,6 +443,13 @@ class YahtzeeGame:
         button_y = 500
         self.roll_button = Button(button_x, button_y, button_width, button_height, "ROLL")
 
+        # Play again button (for game over screen)
+        play_again_width = 200
+        play_again_height = 60
+        play_again_x = (WINDOW_WIDTH - play_again_width) // 2
+        play_again_y = 450
+        self.play_again_button = Button(play_again_x, play_again_y, play_again_width, play_again_height, "PLAY AGAIN", 40)
+
         # Animation state
         self.is_rolling = False
         self.roll_timer = 0
@@ -468,6 +475,16 @@ class YahtzeeGame:
         self.rolls_used = 0
         for die in self.dice:
             die.held = False
+
+    def reset_game(self):
+        """Reset the game to start a new game"""
+        self.scorecard = Scorecard()
+        self.current_round = 1
+        self.game_over = False
+        self.rolls_used = 0
+        for die in self.dice:
+            die.held = False
+            die.value = random.randint(1, 6)
 
     def roll_dice(self):
         """Start the dice rolling animation"""
@@ -529,6 +546,10 @@ class YahtzeeGame:
             # Handle button clicks (only if not currently rolling)
             if self.roll_button.handle_event(event) and not self.is_rolling:
                 self.roll_dice()
+
+            # Handle play again button (only when game is over)
+            if self.game_over and self.play_again_button.handle_event(event):
+                self.reset_game()
 
     def update(self):
         """Update game state"""
@@ -649,6 +670,48 @@ class YahtzeeGame:
         total_text = font_bold.render(f"GRAND TOTAL: {grand_total}", True, BLACK)
         self.screen.blit(total_text, (scorecard_x, y))
 
+    def draw_game_over(self):
+        """Draw the game over screen overlay"""
+        # Semi-transparent overlay
+        overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
+        overlay.set_alpha(220)
+        overlay.fill((240, 240, 240))
+        self.screen.blit(overlay, (0, 0))
+
+        # Game Over title
+        title_font = pygame.font.Font(None, 96)
+        title_text = title_font.render("GAME OVER!", True, BLACK)
+        title_rect = title_text.get_rect(center=(WINDOW_WIDTH // 2, 200))
+        self.screen.blit(title_text, title_rect)
+
+        # Final score
+        score_font = pygame.font.Font(None, 72)
+        final_score = self.scorecard.get_grand_total()
+        score_text = score_font.render(f"Final Score: {final_score}", True, (50, 100, 150))
+        score_rect = score_text.get_rect(center=(WINDOW_WIDTH // 2, 320))
+        self.screen.blit(score_text, score_rect)
+
+        # Breakdown
+        breakdown_font = pygame.font.Font(None, 36)
+        upper_total = self.scorecard.get_upper_section_total()
+        upper_bonus = self.scorecard.get_upper_section_bonus()
+        lower_total = self.scorecard.get_lower_section_total()
+
+        y = 380
+        breakdown_texts = [
+            f"Upper Section: {upper_total}",
+            f"Bonus: {upper_bonus}",
+            f"Lower Section: {lower_total}"
+        ]
+        for text in breakdown_texts:
+            rendered = breakdown_font.render(text, True, BLACK)
+            rect = rendered.get_rect(center=(WINDOW_WIDTH // 2, y))
+            self.screen.blit(rendered, rect)
+            y += 35
+
+        # Play again button
+        self.play_again_button.draw(self.screen)
+
     def draw(self):
         """Draw everything to the screen"""
         # Clear screen with white background
@@ -681,6 +744,10 @@ class YahtzeeGame:
 
         # Draw scorecard
         self.draw_scorecard()
+
+        # Draw game over screen if game is over
+        if self.game_over:
+            self.draw_game_over()
 
         # Update display
         pygame.display.flip()
