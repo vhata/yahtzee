@@ -20,11 +20,17 @@ FPS = 60
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 GRAY = (200, 200, 200)
-DICE_COLOR = (240, 240, 240)
-DOT_COLOR = (50, 50, 50)
+LIGHT_GRAY = (240, 240, 245)
+BACKGROUND = (245, 250, 255)
+DICE_COLOR = (255, 255, 255)
+DOT_COLOR = (40, 40, 40)
 BUTTON_COLOR = (70, 130, 180)
 BUTTON_HOVER_COLOR = (100, 149, 237)
 BUTTON_TEXT_COLOR = (255, 255, 255)
+SCORECARD_BG = (250, 252, 255)
+SECTION_HEADER_COLOR = (60, 120, 160)
+VALID_SCORE_COLOR = (40, 180, 80)
+HOVER_COLOR = (220, 240, 255)
 
 # Dice constants
 DICE_SIZE = 80
@@ -294,6 +300,10 @@ class Dice:
 
     def draw(self, surface):
         """Draw the die with its current value"""
+        # Draw subtle shadow for depth
+        shadow_rect = pygame.Rect(self.x + 3, self.y + 3, DICE_SIZE, DICE_SIZE)
+        pygame.draw.rect(surface, (200, 200, 200, 50), shadow_rect, border_radius=10)
+
         # Draw dice background
         dice_rect = pygame.Rect(self.x, self.y, DICE_SIZE, DICE_SIZE)
         pygame.draw.rect(surface, DICE_COLOR, dice_rect, border_radius=10)
@@ -303,7 +313,7 @@ class Dice:
             # Green highlight for held dice
             pygame.draw.rect(surface, (50, 200, 50), dice_rect, width=5, border_radius=10)
         else:
-            pygame.draw.rect(surface, BLACK, dice_rect, width=2, border_radius=10)
+            pygame.draw.rect(surface, (100, 100, 100), dice_rect, width=2, border_radius=10)
 
         # Draw dots based on value
         self._draw_dots(surface)
@@ -576,6 +586,11 @@ class YahtzeeGame:
         row_height = 28
         col_width = 180
 
+        # Draw scorecard background panel
+        panel_rect = pygame.Rect(scorecard_x - 15, scorecard_y - 15, 360, 520)
+        pygame.draw.rect(self.screen, SCORECARD_BG, panel_rect, border_radius=12)
+        pygame.draw.rect(self.screen, (180, 180, 200), panel_rect, width=2, border_radius=12)
+
         # Fonts
         font = pygame.font.Font(None, 24)
         font_small = pygame.font.Font(None, 20)
@@ -584,7 +599,7 @@ class YahtzeeGame:
         y = scorecard_y
 
         # Upper section header
-        header = font_bold.render("UPPER SECTION", True, BLACK)
+        header = font_bold.render("UPPER SECTION", True, SECTION_HEADER_COLOR)
         self.screen.blit(header, (scorecard_x, y))
         y += row_height + 5
 
@@ -599,7 +614,7 @@ class YahtzeeGame:
 
             # Draw hover highlight for unfilled categories
             if not self.scorecard.is_filled(cat) and self.hovered_category == cat:
-                pygame.draw.rect(self.screen, (220, 240, 255), cat_rect, border_radius=5)
+                pygame.draw.rect(self.screen, HOVER_COLOR, cat_rect, border_radius=5)
 
             # Category name
             name_text = font.render(cat.value, True, BLACK)
@@ -611,7 +626,8 @@ class YahtzeeGame:
                 score_color = BLACK
             else:
                 score = calculate_score(cat, self.dice)
-                score_color = GRAY
+                # Show valid scores in green, zero scores in gray
+                score_color = VALID_SCORE_COLOR if score > 0 else GRAY
 
             score_text = font.render(str(score), True, score_color)
             self.screen.blit(score_text, (scorecard_x + col_width, y))
@@ -630,7 +646,7 @@ class YahtzeeGame:
         y += row_height + 10
 
         # Lower section header
-        header = font_bold.render("LOWER SECTION", True, BLACK)
+        header = font_bold.render("LOWER SECTION", True, SECTION_HEADER_COLOR)
         self.screen.blit(header, (scorecard_x, y))
         y += row_height + 5
 
@@ -646,7 +662,7 @@ class YahtzeeGame:
 
             # Draw hover highlight for unfilled categories
             if not self.scorecard.is_filled(cat) and self.hovered_category == cat:
-                pygame.draw.rect(self.screen, (220, 240, 255), cat_rect, border_radius=5)
+                pygame.draw.rect(self.screen, HOVER_COLOR, cat_rect, border_radius=5)
 
             # Category name
             name_text = font.render(cat.value, True, BLACK)
@@ -658,7 +674,8 @@ class YahtzeeGame:
                 score_color = BLACK
             else:
                 score = calculate_score(cat, self.dice)
-                score_color = GRAY
+                # Show valid scores in green, zero scores in gray
+                score_color = VALID_SCORE_COLOR if score > 0 else GRAY
 
             score_text = font.render(str(score), True, score_color)
             self.screen.blit(score_text, (scorecard_x + col_width, y))
@@ -714,12 +731,17 @@ class YahtzeeGame:
 
     def draw(self):
         """Draw everything to the screen"""
-        # Clear screen with white background
-        self.screen.fill(WHITE)
+        # Clear screen with subtle background color
+        self.screen.fill(BACKGROUND)
 
-        # Draw a simple title for now
+        # Draw title with shadow effect
         font = pygame.font.Font(None, 72)
-        title = font.render("YAHTZEE", True, BLACK)
+        # Shadow
+        title_shadow = font.render("YAHTZEE", True, (180, 180, 180))
+        shadow_rect = title_shadow.get_rect(center=(WINDOW_WIDTH // 2 + 3, 103))
+        self.screen.blit(title_shadow, shadow_rect)
+        # Main title
+        title = font.render("YAHTZEE", True, SECTION_HEADER_COLOR)
         title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, 100))
         self.screen.blit(title, title_rect)
 
