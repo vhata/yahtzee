@@ -5,6 +5,7 @@ Yahtzee Game - A graphical implementation using pygame
 import pygame
 import sys
 import random
+import math
 from enum import Enum
 from collections import Counter
 
@@ -298,14 +299,18 @@ class Dice:
         """Toggle the held state of the die"""
         self.held = not self.held
 
-    def draw(self, surface):
+    def draw(self, surface, offset_x=0, offset_y=0):
         """Draw the die with its current value"""
+        # Apply offsets for animation effects
+        x = self.x + offset_x
+        y = self.y + offset_y
+
         # Draw subtle shadow for depth
-        shadow_rect = pygame.Rect(self.x + 3, self.y + 3, DICE_SIZE, DICE_SIZE)
+        shadow_rect = pygame.Rect(x + 3, y + 3, DICE_SIZE, DICE_SIZE)
         pygame.draw.rect(surface, (200, 200, 200, 50), shadow_rect, border_radius=10)
 
         # Draw dice background
-        dice_rect = pygame.Rect(self.x, self.y, DICE_SIZE, DICE_SIZE)
+        dice_rect = pygame.Rect(x, y, DICE_SIZE, DICE_SIZE)
         pygame.draw.rect(surface, DICE_COLOR, dice_rect, border_radius=10)
 
         # Draw border - thicker and colored if held
@@ -316,13 +321,13 @@ class Dice:
             pygame.draw.rect(surface, (100, 100, 100), dice_rect, width=2, border_radius=10)
 
         # Draw dots based on value
-        self._draw_dots(surface)
+        self._draw_dots(surface, offset_x, offset_y)
 
-    def _draw_dots(self, surface):
+    def _draw_dots(self, surface, offset_x=0, offset_y=0):
         """Draw the dots/pips on the die face"""
         # Calculate dot positions relative to die center
-        center_x = self.x + DICE_SIZE // 2
-        center_y = self.y + DICE_SIZE // 2
+        center_x = self.x + DICE_SIZE // 2 + offset_x
+        center_y = self.y + DICE_SIZE // 2 + offset_y
         offset = DICE_SIZE // 4
 
         # Define dot positions for each value
@@ -437,8 +442,8 @@ class YahtzeeGame:
         # Create 5 dice with different values to showcase all faces
         self.dice = []
         dice_y = 300
-        total_width = 5 * DICE_SIZE + 4 * DICE_MARGIN
-        start_x = (WINDOW_WIDTH - total_width) // 2
+        # Position dice on left side to avoid scorecard overlap
+        start_x = 80
 
         for i in range(5):
             x = start_x + i * (DICE_SIZE + DICE_MARGIN)
@@ -446,10 +451,10 @@ class YahtzeeGame:
             dice = Dice(x, dice_y, value=random.randint(1, 6))
             self.dice.append(dice)
 
-        # Create roll button
+        # Create roll button (positioned on left side with dice)
         button_width = 150
         button_height = 50
-        button_x = (WINDOW_WIDTH - button_width) // 2
+        button_x = start_x + 165  # Center under dice area
         button_y = 500
         self.roll_button = Button(button_x, button_y, button_width, button_height, "ROLL")
 
@@ -463,7 +468,7 @@ class YahtzeeGame:
         # Animation state
         self.is_rolling = False
         self.roll_timer = 0
-        self.roll_duration = 30  # frames (0.5 seconds at 60 FPS)
+        self.roll_duration = 60  # frames (1 second at 60 FPS)
         self.final_values = []
 
         # Scorecard
@@ -750,9 +755,15 @@ class YahtzeeGame:
         round_text = round_font.render(f"Round {self.current_round}/13", True, BLACK)
         self.screen.blit(round_text, (50, 50))
 
-        # Draw all dice
+        # Draw all dice with shake effect during rolling
         for die in self.dice:
-            die.draw(self.screen)
+            if self.is_rolling and not die.held:
+                # Add shake effect for unheld dice during rolling
+                shake_x = int(math.sin(self.roll_timer * 0.5) * 3)
+                shake_y = int(math.cos(self.roll_timer * 0.7) * 3)
+                die.draw(self.screen, shake_x, shake_y)
+            else:
+                die.draw(self.screen)
 
         # Draw roll button (disable during rolling animation, out of rolls, or game over)
         self.roll_button.enabled = not self.is_rolling and self.rolls_used < MAX_ROLLS_PER_TURN and not self.game_over
@@ -762,7 +773,7 @@ class YahtzeeGame:
         roll_font = pygame.font.Font(None, 32)
         rolls_remaining = MAX_ROLLS_PER_TURN - self.rolls_used
         roll_text = roll_font.render(f"Rolls left: {rolls_remaining}", True, BLACK)
-        self.screen.blit(roll_text, (350, 560))
+        self.screen.blit(roll_text, (200, 560))
 
         # Draw scorecard
         self.draw_scorecard()
