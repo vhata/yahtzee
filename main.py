@@ -31,6 +31,9 @@ DICE_SIZE = 80
 DICE_MARGIN = 20
 DOT_RADIUS = 6
 
+# Game constants
+MAX_ROLLS_PER_TURN = 3
+
 
 class Category(Enum):
     """Yahtzee score categories"""
@@ -449,11 +452,21 @@ class YahtzeeGame:
         # Scorecard
         self.scorecard = Scorecard()
 
+        # Turn management
+        self.rolls_used = 0
+
+    def start_new_turn(self):
+        """Start a new turn - reset rolls and held dice"""
+        self.rolls_used = 0
+        for die in self.dice:
+            die.held = False
+
     def roll_dice(self):
         """Start the dice rolling animation"""
-        if not self.is_rolling:
+        if not self.is_rolling and self.rolls_used < MAX_ROLLS_PER_TURN:
             self.is_rolling = True
             self.roll_timer = 0
+            self.rolls_used += 1
             # Determine final values for each die (only for unheld dice)
             self.final_values = []
             for die in self.dice:
@@ -601,9 +614,15 @@ class YahtzeeGame:
         for die in self.dice:
             die.draw(self.screen)
 
-        # Draw roll button (disable during rolling animation)
-        self.roll_button.enabled = not self.is_rolling
+        # Draw roll button (disable during rolling animation or if out of rolls)
+        self.roll_button.enabled = not self.is_rolling and self.rolls_used < MAX_ROLLS_PER_TURN
         self.roll_button.draw(self.screen)
+
+        # Draw roll count
+        roll_font = pygame.font.Font(None, 32)
+        rolls_remaining = MAX_ROLLS_PER_TURN - self.rolls_used
+        roll_text = roll_font.render(f"Rolls left: {rolls_remaining}", True, BLACK)
+        self.screen.blit(roll_text, (350, 560))
 
         # Draw scorecard
         self.draw_scorecard()
