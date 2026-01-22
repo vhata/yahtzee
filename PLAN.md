@@ -447,8 +447,8 @@ Update project documentation and verify complete refactoring.
 - [x] Refactoring Step 3: Write Comprehensive Unit Tests
 - [x] Refactoring Step 4: Add DiceSprite Class
 - [x] Refactoring Step 5: Refactor YahtzeeGame to Use GameState
-- [ ] Refactoring Step 6: Clean Up and Add Integration Tests
-- [ ] Refactoring Step 7: Add Testing Documentation
+- [x] Refactoring Step 6: Clean Up and Add Integration Tests
+- [x] Refactoring Step 7: Add Testing Documentation
 - [ ] Refactoring Step 8: Final Verification and Documentation
 
 ---
