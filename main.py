@@ -54,6 +54,14 @@ DOT_RADIUS = 6
 # Game constants
 MAX_ROLLS_PER_TURN = 3
 
+# Speed presets for AI playback: (ai_delay, roll_duration) in frames
+SPEED_PRESETS = {
+    "slow":   (60, 90),
+    "normal": (30, 60),
+    "fast":   (10, 20),
+}
+SPEED_NAMES = ["slow", "normal", "fast"]
+
 
 class DiceSprite:
     """Visual representation of a die - handles only positioning and rendering"""
@@ -253,11 +261,12 @@ class Button:
 class YahtzeeGame:
     """Main game class for Yahtzee"""
 
-    def __init__(self, ai_strategy=None):
+    def __init__(self, ai_strategy=None, speed="normal"):
         """Initialize the game window and basic components
 
         Args:
             ai_strategy: Optional AI strategy instance. If provided, AI plays the game.
+            speed: Speed preset name for AI playback ("slow", "normal", "fast").
         """
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("Yahtzee")
@@ -270,7 +279,8 @@ class YahtzeeGame:
         # AI state
         self.ai_strategy = ai_strategy
         self.ai_timer = 0
-        self.ai_delay = 30  # frames between AI actions (~0.5 seconds at 60 FPS)
+        self.speed_name = speed
+        self.ai_delay, self.roll_duration = SPEED_PRESETS[self.speed_name]
         self.ai_needs_first_roll = True  # AI needs to roll at start of each turn
         self.ai_reason = ""  # Latest AI reasoning explanation
 
@@ -302,7 +312,6 @@ class YahtzeeGame:
         # Animation state (GUI concern only)
         self.is_rolling = False
         self.roll_timer = 0
-        self.roll_duration = 60  # frames (1 second at 60 FPS)
         self.animation_dice_values = [die.value for die in self.state.dice]  # For animation display
         self.final_values = []
         self._pending_state = None  # State to commit after animation
@@ -342,6 +351,18 @@ class YahtzeeGame:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
+                # Speed control (+/- keys) — only during AI playback
+                if self.ai_strategy and not self.state.game_over:
+                    if event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
+                        idx = SPEED_NAMES.index(self.speed_name)
+                        if idx < len(SPEED_NAMES) - 1:
+                            self.speed_name = SPEED_NAMES[idx + 1]
+                            self.ai_delay, self.roll_duration = SPEED_PRESETS[self.speed_name]
+                    elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                        idx = SPEED_NAMES.index(self.speed_name)
+                        if idx > 0:
+                            self.speed_name = SPEED_NAMES[idx - 1]
+                            self.ai_delay, self.roll_duration = SPEED_PRESETS[self.speed_name]
             elif event.type == pygame.MOUSEMOTION:
                 # Check hover over scorecard categories (only if game not over)
                 self.hovered_category = None
@@ -599,7 +620,8 @@ class YahtzeeGame:
         if self.ai_strategy:
             ai_font = pygame.font.Font(None, 28)
             ai_name = self.ai_strategy.__class__.__name__.replace("Strategy", "")
-            ai_text = ai_font.render(f"AI: {ai_name}", True, (180, 80, 80))
+            speed_label = self.speed_name.capitalize()
+            ai_text = ai_font.render(f"AI: {ai_name} | Speed: {speed_label} (+/-)", True, (180, 80, 80))
             self.screen.blit(ai_text, (50, 80))
 
         # Draw all dice sprites
@@ -696,6 +718,8 @@ def parse_args():
     parser.add_argument("--random", action="store_true", help="Use Random strategy (with --ai)")
     parser.add_argument("--greedy", action="store_true", help="Use Greedy strategy (with --ai)")
     parser.add_argument("--ev", action="store_true", help="Use ExpectedValue strategy (with --ai)")
+    parser.add_argument("--speed", choices=["slow", "normal", "fast"], default="normal",
+                        help="AI playback speed (default: normal)")
     return parser.parse_args()
 
 
@@ -713,7 +737,7 @@ def main():
             # Default to greedy if --ai is passed without a specific strategy
             ai_strategy = GreedyStrategy()
 
-    game = YahtzeeGame(ai_strategy=ai_strategy)
+    game = YahtzeeGame(ai_strategy=ai_strategy, speed=args.speed)
     game.run()
 
 
