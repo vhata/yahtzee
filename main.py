@@ -363,6 +363,15 @@ class YahtzeeGame:
                         if idx > 0:
                             self.speed_name = SPEED_NAMES[idx - 1]
                             self.ai_delay, self.roll_duration = SPEED_PRESETS[self.speed_name]
+                # Keyboard shortcuts for human players
+                if not self.ai_strategy and not self.state.game_over and not self.is_rolling:
+                    # Spacebar to roll dice
+                    if event.key == pygame.K_SPACE:
+                        self.roll_dice()
+                    # Keys 1-5 to toggle die holds
+                    elif pygame.K_1 <= event.key <= pygame.K_5:
+                        die_index = event.key - pygame.K_1
+                        self.state = engine_toggle_die(self.state, die_index)
             elif event.type == pygame.MOUSEMOTION:
                 # Check hover over scorecard categories (only if game not over)
                 self.hovered_category = None
