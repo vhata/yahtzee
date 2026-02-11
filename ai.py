@@ -27,12 +27,14 @@ from game_engine import (
 class RollAction:
     """Hold specific dice and re-roll the rest."""
     hold: Tuple[int, ...]  # dice indices (0-4) to hold; rest get rolled
+    reason: str = ""
 
 
 @dataclass(frozen=True)
 class ScoreAction:
     """Lock in a score for a category."""
     category: Category
+    reason: str = ""
 
 
 # ── Strategy Interface ──────────────────────────────────────────────────────
@@ -134,14 +136,15 @@ class RandomStrategy(YahtzeeStrategy):
         if random.random() < 0.5:
             # Random subset of dice to hold
             hold = tuple(i for i in range(5) if random.random() < 0.5)
-            return RollAction(hold=hold)
+            return RollAction(hold=hold, reason="Feeling lucky — random hold and re-roll")
 
         return self._random_score(state)
 
     def _random_score(self, state: GameState) -> ScoreAction:
         """Pick a random unfilled category."""
         available = [cat for cat in Category if not state.scorecard.is_filled(cat)]
-        return ScoreAction(category=random.choice(available))
+        cat = random.choice(available)
+        return ScoreAction(category=cat, reason=f"Randomly picking {cat.value}")
 
 
 # ── GreedyStrategy ─────────────────────────────────────────────────────────
@@ -182,8 +185,8 @@ class GreedyStrategy(YahtzeeStrategy):
             return good_action
 
         # Re-roll with smart holds
-        hold = self._choose_holds(state)
-        return RollAction(hold=hold)
+        hold, hold_reason = self._choose_holds(state)
+        return RollAction(hold=hold, reason=hold_reason)
 
     def _check_good_scores(self, state: GameState) -> Union[ScoreAction, None]:
         """Check if any unfilled category has a score worth taking immediately."""
@@ -195,32 +198,44 @@ class GreedyStrategy(YahtzeeStrategy):
             if cat in available:
                 score = calculate_score(cat, state.dice)
                 if score >= _GOOD_SCORE_THRESHOLDS[cat]:
-                    return ScoreAction(category=cat)
+                    return ScoreAction(
+                        category=cat,
+                        reason=f"Taking {cat.value} for {score} — that's a great score!")
 
         # Check upper section — take if >= 3x face value (on track for bonus)
         for cat, face in _UPPER_CATS.items():
             if cat in available:
                 score = calculate_score(cat, state.dice)
                 if score >= face * 3:
-                    return ScoreAction(category=cat)
+                    return ScoreAction(
+                        category=cat,
+                        reason=f"Scoring {cat.value} for {score} — on track for upper bonus")
 
         # Check n-of-a-kind categories for high scores
         for cat in [Category.FOUR_OF_KIND, Category.THREE_OF_KIND]:
             if cat in available:
                 score = calculate_score(cat, state.dice)
                 if score >= 20:
-                    return ScoreAction(category=cat)
+                    return ScoreAction(
+                        category=cat,
+                        reason=f"Taking {cat.value} for {score}")
 
         # Check Chance for high scores
         if Category.CHANCE in available:
             score = calculate_score(Category.CHANCE, state.dice)
             if score >= 25:
-                return ScoreAction(category=Category.CHANCE)
+                return ScoreAction(
+                    category=Category.CHANCE,
+                    reason=f"Taking Chance for {score} — high dice total")
 
         return None
 
-    def _choose_holds(self, state: GameState) -> Tuple[int, ...]:
-        """Decide which dice to hold when re-rolling."""
+    def _choose_holds(self, state: GameState) -> tuple:
+        """Decide which dice to hold when re-rolling.
+
+        Returns:
+            (hold_indices, reason) tuple
+        """
         values = [die.value for die in state.dice]
         counts = Counter(values)
 
@@ -236,12 +251,13 @@ class GreedyStrategy(YahtzeeStrategy):
                     if v in straight and v not in held_values:
                         hold.append(i)
                         held_values.add(v)
-                return tuple(hold)
+                held_vals = sorted(held_values)
+                return tuple(hold), f"Holding {held_vals} — going for a straight"
 
         # Default: hold the most frequent value (aiming for n-of-a-kind)
         most_common_val = counts.most_common(1)[0][0]
         hold = tuple(i for i, v in enumerate(values) if v == most_common_val)
-        return hold
+        return hold, f"Holding the {most_common_val}s — going for multiple of a kind"
 
     def _best_score(self, state: GameState) -> ScoreAction:
         """Pick the best available category to score."""
@@ -268,7 +284,10 @@ class GreedyStrategy(YahtzeeStrategy):
         if best_score == 0:
             return self._waste_category(state, available)
 
-        return ScoreAction(category=best_cat)
+        actual_score = calculate_score(best_cat, state.dice)
+        return ScoreAction(
+            category=best_cat,
+            reason=f"Out of rolls — best available is {best_cat.value} for {actual_score}")
 
     def _waste_category(self, state: GameState, available: list) -> ScoreAction:
         """When forced to score 0, pick the least valuable category to waste."""
@@ -290,8 +309,12 @@ class GreedyStrategy(YahtzeeStrategy):
         ]
         for cat in waste_order:
             if cat in available:
-                return ScoreAction(category=cat)
-        return ScoreAction(category=available[0])
+                return ScoreAction(
+                    category=cat,
+                    reason=f"Nothing scores — sacrificing {cat.value}")
+        return ScoreAction(
+            category=available[0],
+            reason=f"Nothing scores — sacrificing {available[0].value}")
 
 
 # ── ExpectedValueStrategy ──────────────────────────────────────────────────
@@ -311,7 +334,11 @@ class ExpectedValueStrategy(YahtzeeStrategy):
 
     def choose_action(self, state: GameState) -> Union[RollAction, ScoreAction]:
         if state.rolls_used >= 3:
-            return ScoreAction(category=self._best_category(state))
+            best_cat = self._best_category(state)
+            score = calculate_score(best_cat, state.dice)
+            return ScoreAction(
+                category=best_cat,
+                reason=f"Out of rolls — {best_cat.value} is the best option for {score}")
 
         available = [cat for cat in Category if not state.scorecard.is_filled(cat)]
 
@@ -332,9 +359,15 @@ class ExpectedValueStrategy(YahtzeeStrategy):
 
         # Compare: score now vs roll again
         if best_now_score >= best_hold_ev:
-            return ScoreAction(category=best_now_cat)
+            actual_score = calculate_score(best_now_cat, state.dice)
+            return ScoreAction(
+                category=best_now_cat,
+                reason=f"Scoring {best_now_cat.value} for {actual_score} (EV of rolling: {best_hold_ev:.1f})")
         else:
-            return RollAction(hold=best_hold)
+            held_values = sorted([state.dice[i].value for i in best_hold])
+            return RollAction(
+                hold=best_hold,
+                reason=f"Holding {held_values} and rolling (EV: {best_hold_ev:.1f} vs scoring now: {best_now_score:.1f})")
 
     def _simulate_hold(self, state: GameState, hold: Tuple[int, ...],
                        available: list) -> float:

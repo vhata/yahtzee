@@ -44,6 +44,7 @@ SCORECARD_BG = (250, 252, 255)
 SECTION_HEADER_COLOR = (60, 120, 160)
 VALID_SCORE_COLOR = (40, 180, 80)
 HOVER_COLOR = (220, 240, 255)
+IN_CUP_COLOR = (180, 185, 195)  # muted gray for unrolled dice
 
 # Dice constants
 DICE_SIZE = 80
@@ -112,6 +113,28 @@ class DiceSprite:
 
         # Draw dots based on value
         self._draw_dots(surface, die_state.value, offset_x, offset_y)
+
+    def draw_in_cup(self, surface):
+        """Draw the die in its 'in the cup' state — face-down, gray, with '?' text.
+
+        Used when rolls_used == 0 to show dice haven't been rolled yet this turn.
+        """
+        # Draw subtle shadow
+        shadow_rect = pygame.Rect(self.x + 3, self.y + 3, DICE_SIZE, DICE_SIZE)
+        pygame.draw.rect(surface, (200, 200, 200, 50), shadow_rect, border_radius=10)
+
+        # Gray background
+        dice_rect = pygame.Rect(self.x, self.y, DICE_SIZE, DICE_SIZE)
+        pygame.draw.rect(surface, IN_CUP_COLOR, dice_rect, border_radius=10)
+
+        # Light border
+        pygame.draw.rect(surface, (150, 155, 165), dice_rect, width=2, border_radius=10)
+
+        # "?" text centered on the die
+        font = pygame.font.Font(None, 48)
+        text = font.render("?", True, (120, 125, 135))
+        text_rect = text.get_rect(center=(self.x + DICE_SIZE // 2, self.y + DICE_SIZE // 2))
+        surface.blit(text, text_rect)
 
     def _draw_dots(self, surface, value, offset_x=0, offset_y=0):
         """
@@ -249,6 +272,7 @@ class YahtzeeGame:
         self.ai_timer = 0
         self.ai_delay = 30  # frames between AI actions (~0.5 seconds at 60 FPS)
         self.ai_needs_first_roll = True  # AI needs to roll at start of each turn
+        self.ai_reason = ""  # Latest AI reasoning explanation
 
         # Dice sprites (visual representation only)
         self.dice_sprites = []
@@ -293,6 +317,7 @@ class YahtzeeGame:
         self.animation_dice_values = [die.value for die in self.state.dice]
         self.ai_needs_first_roll = True
         self.ai_timer = 0
+        self.ai_reason = ""
 
     def roll_dice(self):
         """Start the dice rolling animation"""
@@ -384,6 +409,7 @@ class YahtzeeGame:
 
             # Ask strategy for a decision
             action = self.ai_strategy.choose_action(self.state)
+            self.ai_reason = action.reason
 
             if isinstance(action, ScoreAction):
                 self.state = engine_select_category(self.state, action.category)
@@ -576,10 +602,16 @@ class YahtzeeGame:
             ai_text = ai_font.render(f"AI: {ai_name}", True, (180, 80, 80))
             self.screen.blit(ai_text, (50, 80))
 
-        # Draw all dice sprites with shake effect during rolling
+        # Draw all dice sprites
         for i, sprite in enumerate(self.dice_sprites):
             die_state = self.state.dice[i]
 
+            # "In the cup" state: dice haven't been rolled yet this turn
+            if self.state.rolls_used == 0 and not self.is_rolling:
+                sprite.draw_in_cup(self.screen)
+                continue
+
+            # "On the table" state: dice have been rolled
             # Use animation values during rolling, actual values otherwise
             if self.is_rolling:
                 # Create temporary DieState for animation display
@@ -600,11 +632,40 @@ class YahtzeeGame:
         self.roll_button.enabled = can_roll(self.state) and not self.is_rolling
         self.roll_button.draw(self.screen)
 
-        # Draw roll count
+        # Draw roll status
         roll_font = pygame.font.Font(None, 32)
-        rolls_remaining = MAX_ROLLS_PER_TURN - self.state.rolls_used
-        roll_text = roll_font.render(f"Rolls left: {rolls_remaining}", True, BLACK)
+        if self.state.rolls_used == 0:
+            roll_text = roll_font.render("Roll the dice!", True, SECTION_HEADER_COLOR)
+        else:
+            rolls_remaining = MAX_ROLLS_PER_TURN - self.state.rolls_used
+            roll_text = roll_font.render(f"Rolls left: {rolls_remaining}", True, BLACK)
         self.screen.blit(roll_text, (200, 560))
+
+        # Draw AI reasoning text below roll status
+        if self.ai_strategy and self.ai_reason:
+            reason_font = pygame.font.Font(None, 24)
+            # Word-wrap the reason text to fit within the dice area width
+            max_width = 480
+            words = self.ai_reason.split()
+            lines = []
+            current_line = ""
+            for word in words:
+                test_line = f"{current_line} {word}".strip()
+                if reason_font.size(test_line)[0] <= max_width:
+                    current_line = test_line
+                else:
+                    if current_line:
+                        lines.append(current_line)
+                    current_line = word
+            if current_line:
+                lines.append(current_line)
+
+            reason_color = (120, 120, 140)
+            reason_y = 590
+            for line in lines:
+                reason_surface = reason_font.render(line, True, reason_color)
+                self.screen.blit(reason_surface, (80, reason_y))
+                reason_y += 20
 
         # Draw scorecard
         self.draw_scorecard()
