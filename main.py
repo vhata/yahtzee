@@ -54,11 +54,11 @@ DOT_RADIUS = 6
 # Game constants
 MAX_ROLLS_PER_TURN = 3
 
-# Speed presets for AI playback: (ai_delay, roll_duration) in frames
+# Speed presets for AI playback: (ai_delay, roll_duration, hold_show_duration) in frames
 SPEED_PRESETS = {
-    "slow":   (60, 90),
-    "normal": (30, 60),
-    "fast":   (10, 20),
+    "slow":   (60, 90, 30),
+    "normal": (30, 60, 20),
+    "fast":   (10, 20, 8),
 }
 SPEED_NAMES = ["slow", "normal", "fast"]
 
@@ -280,9 +280,11 @@ class YahtzeeGame:
         self.ai_strategy = ai_strategy
         self.ai_timer = 0
         self.speed_name = speed
-        self.ai_delay, self.roll_duration = SPEED_PRESETS[self.speed_name]
+        self.ai_delay, self.roll_duration, self.ai_hold_show_duration = SPEED_PRESETS[self.speed_name]
         self.ai_needs_first_roll = True  # AI needs to roll at start of each turn
         self.ai_reason = ""  # Latest AI reasoning explanation
+        self.ai_showing_holds = False  # Pause to show AI's held dice before rolling
+        self.ai_hold_timer = 0
 
         # Dice sprites (visual representation only)
         self.dice_sprites = []
@@ -327,6 +329,8 @@ class YahtzeeGame:
         self.ai_needs_first_roll = True
         self.ai_timer = 0
         self.ai_reason = ""
+        self.ai_showing_holds = False
+        self.ai_hold_timer = 0
 
     def roll_dice(self):
         """Start the dice rolling animation"""
@@ -357,12 +361,12 @@ class YahtzeeGame:
                         idx = SPEED_NAMES.index(self.speed_name)
                         if idx < len(SPEED_NAMES) - 1:
                             self.speed_name = SPEED_NAMES[idx + 1]
-                            self.ai_delay, self.roll_duration = SPEED_PRESETS[self.speed_name]
+                            self.ai_delay, self.roll_duration, self.ai_hold_show_duration = SPEED_PRESETS[self.speed_name]
                     elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
                         idx = SPEED_NAMES.index(self.speed_name)
                         if idx > 0:
                             self.speed_name = SPEED_NAMES[idx - 1]
-                            self.ai_delay, self.roll_duration = SPEED_PRESETS[self.speed_name]
+                            self.ai_delay, self.roll_duration, self.ai_hold_show_duration = SPEED_PRESETS[self.speed_name]
                 # Keyboard shortcuts for human players
                 if not self.ai_strategy and not self.state.game_over and not self.is_rolling:
                     # Spacebar to roll dice
@@ -424,6 +428,14 @@ class YahtzeeGame:
                 self.is_rolling = False
             return
 
+        # AI hold-showing pause — briefly display held dice before rolling
+        if self.ai_showing_holds:
+            self.ai_hold_timer += 1
+            if self.ai_hold_timer >= self.ai_hold_show_duration:
+                self.ai_showing_holds = False
+                self.roll_dice()
+            return
+
         # AI controller — paces decisions with a timer so you can watch
         if self.ai_strategy and not self.state.game_over:
             self.ai_timer += 1
@@ -451,7 +463,9 @@ class YahtzeeGame:
                     is_held = self.state.dice[i].held
                     if should_hold != is_held:
                         self.state = engine_toggle_die(self.state, i)
-                self.roll_dice()
+                # Pause to show the held dice before rolling
+                self.ai_showing_holds = True
+                self.ai_hold_timer = 0
 
     def draw_scorecard(self):
         """Draw the scorecard UI on the right side of screen"""
