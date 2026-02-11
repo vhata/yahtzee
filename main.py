@@ -2,6 +2,7 @@
 """
 Yahtzee Game - A graphical implementation using pygame
 """
+import argparse
 import pygame
 import sys
 import random
@@ -14,6 +15,10 @@ from game_engine import (
     select_category as engine_select_category,
     can_roll, can_select_category,
     reset_game as engine_reset_game
+)
+from ai import (
+    RollAction, ScoreAction,
+    RandomStrategy, GreedyStrategy, ExpectedValueStrategy,
 )
 
 # Initialize pygame
@@ -225,8 +230,12 @@ class Button:
 class YahtzeeGame:
     """Main game class for Yahtzee"""
 
-    def __init__(self):
-        """Initialize the game window and basic components"""
+    def __init__(self, ai_strategy=None):
+        """Initialize the game window and basic components
+
+        Args:
+            ai_strategy: Optional AI strategy instance. If provided, AI plays the game.
+        """
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("Yahtzee")
         self.clock = pygame.time.Clock()
@@ -234,6 +243,12 @@ class YahtzeeGame:
 
         # Game state (from engine)
         self.state = GameState.create_initial()
+
+        # AI state
+        self.ai_strategy = ai_strategy
+        self.ai_timer = 0
+        self.ai_delay = 30  # frames between AI actions (~0.5 seconds at 60 FPS)
+        self.ai_needs_first_roll = True  # AI needs to roll at start of each turn
 
         # Dice sprites (visual representation only)
         self.dice_sprites = []
@@ -276,6 +291,8 @@ class YahtzeeGame:
         """Reset the game to start a new game"""
         self.state = engine_reset_game()
         self.animation_dice_values = [die.value for die in self.state.dice]
+        self.ai_needs_first_roll = True
+        self.ai_timer = 0
 
     def roll_dice(self):
         """Start the dice rolling animation"""
@@ -350,6 +367,35 @@ class YahtzeeGame:
                 self.state = self._pending_state
                 self.animation_dice_values = self.final_values.copy()
                 self.is_rolling = False
+            return
+
+        # AI controller — paces decisions with a timer so you can watch
+        if self.ai_strategy and not self.state.game_over:
+            self.ai_timer += 1
+            if self.ai_timer < self.ai_delay:
+                return
+            self.ai_timer = 0
+
+            # First roll of the turn (mandatory)
+            if self.ai_needs_first_roll:
+                self.roll_dice()
+                self.ai_needs_first_roll = False
+                return
+
+            # Ask strategy for a decision
+            action = self.ai_strategy.choose_action(self.state)
+
+            if isinstance(action, ScoreAction):
+                self.state = engine_select_category(self.state, action.category)
+                self.ai_needs_first_roll = True
+            elif isinstance(action, RollAction):
+                # Apply holds: set each die to match the strategy's request
+                for i in range(5):
+                    should_hold = i in action.hold
+                    is_held = self.state.dice[i].held
+                    if should_hold != is_held:
+                        self.state = engine_toggle_die(self.state, i)
+                self.roll_dice()
 
     def draw_scorecard(self):
         """Draw the scorecard UI on the right side of screen"""
@@ -523,6 +569,13 @@ class YahtzeeGame:
         round_text = round_font.render(f"Round {self.state.current_round}/13", True, BLACK)
         self.screen.blit(round_text, (50, 50))
 
+        # Draw AI indicator if AI is active
+        if self.ai_strategy:
+            ai_font = pygame.font.Font(None, 28)
+            ai_name = self.ai_strategy.__class__.__name__.replace("Strategy", "")
+            ai_text = ai_font.render(f"AI: {ai_name}", True, (180, 80, 80))
+            self.screen.blit(ai_text, (50, 80))
+
         # Draw all dice sprites with shake effect during rolling
         for i, sprite in enumerate(self.dice_sprites):
             die_state = self.state.dice[i]
@@ -575,9 +628,31 @@ class YahtzeeGame:
         sys.exit()
 
 
+def parse_args():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description="Yahtzee Game")
+    parser.add_argument("--ai", action="store_true", help="Enable AI player")
+    parser.add_argument("--random", action="store_true", help="Use Random strategy (with --ai)")
+    parser.add_argument("--greedy", action="store_true", help="Use Greedy strategy (with --ai)")
+    parser.add_argument("--ev", action="store_true", help="Use ExpectedValue strategy (with --ai)")
+    return parser.parse_args()
+
+
 def main():
     """Entry point for the game"""
-    game = YahtzeeGame()
+    args = parse_args()
+
+    ai_strategy = None
+    if args.ai:
+        if args.random:
+            ai_strategy = RandomStrategy()
+        elif args.ev:
+            ai_strategy = ExpectedValueStrategy()
+        else:
+            # Default to greedy if --ai is passed without a specific strategy
+            ai_strategy = GreedyStrategy()
+
+    game = YahtzeeGame(ai_strategy=ai_strategy)
     game.run()
 
 
