@@ -308,7 +308,7 @@ class YahtzeeGame:
         play_again_width = 200
         play_again_height = 60
         play_again_x = (WINDOW_WIDTH - play_again_width) // 2
-        play_again_y = 450
+        play_again_y = 550
         self.play_again_button = Button(play_again_x, play_again_y, play_again_width, play_again_height, "PLAY AGAIN", 40)
 
         # Animation state (GUI concern only)
@@ -577,43 +577,91 @@ class YahtzeeGame:
         self.screen.blit(total_text, (scorecard_x, y))
 
     def draw_game_over(self):
-        """Draw the game over screen overlay"""
+        """Draw the game over screen overlay with per-category score breakdown"""
         # Semi-transparent overlay
         overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
         overlay.set_alpha(220)
         overlay.fill((240, 240, 240))
         self.screen.blit(overlay, (0, 0))
 
+        scorecard = self.state.scorecard
+
         # Game Over title
-        title_font = pygame.font.Font(None, 96)
+        title_font = pygame.font.Font(None, 72)
         title_text = title_font.render("GAME OVER!", True, BLACK)
-        title_rect = title_text.get_rect(center=(WINDOW_WIDTH // 2, 200))
+        title_rect = title_text.get_rect(center=(WINDOW_WIDTH // 2, 60))
         self.screen.blit(title_text, title_rect)
 
         # Final score
-        score_font = pygame.font.Font(None, 72)
-        final_score = self.state.scorecard.get_grand_total()
+        score_font = pygame.font.Font(None, 56)
+        final_score = scorecard.get_grand_total()
         score_text = score_font.render(f"Final Score: {final_score}", True, (50, 100, 150))
-        score_rect = score_text.get_rect(center=(WINDOW_WIDTH // 2, 320))
+        score_rect = score_text.get_rect(center=(WINDOW_WIDTH // 2, 115))
         self.screen.blit(score_text, score_rect)
 
-        # Breakdown
-        breakdown_font = pygame.font.Font(None, 36)
-        upper_total = self.state.scorecard.get_upper_section_total()
-        upper_bonus = self.state.scorecard.get_upper_section_bonus()
-        lower_total = self.state.scorecard.get_lower_section_total()
+        # Fonts for breakdown
+        header_font = pygame.font.Font(None, 30)
+        cat_font = pygame.font.Font(None, 24)
+        total_font = pygame.font.Font(None, 28)
 
-        y = 380
-        breakdown_texts = [
-            f"Upper Section: {upper_total}",
-            f"Bonus: {upper_bonus}",
-            f"Lower Section: {lower_total}"
-        ]
-        for text in breakdown_texts:
-            rendered = breakdown_font.render(text, True, BLACK)
-            rect = rendered.get_rect(center=(WINDOW_WIDTH // 2, y))
-            self.screen.blit(rendered, rect)
-            y += 35
+        # --- Left column: Upper section ---
+        left_x = 180
+        y = 160
+
+        header = header_font.render("UPPER SECTION", True, SECTION_HEADER_COLOR)
+        self.screen.blit(header, (left_x, y))
+        y += 28
+
+        upper_cats = [Category.ONES, Category.TWOS, Category.THREES,
+                      Category.FOURS, Category.FIVES, Category.SIXES]
+        for cat in upper_cats:
+            score = scorecard.scores.get(cat, 0)
+            name_text = cat_font.render(cat.value, True, BLACK)
+            score_text = cat_font.render(str(score), True, BLACK)
+            self.screen.blit(name_text, (left_x + 10, y))
+            self.screen.blit(score_text, (left_x + 160, y))
+            y += 24
+
+        y += 6
+        upper_total = scorecard.get_upper_section_total()
+        sub_text = total_font.render(f"Subtotal: {upper_total}", True, BLACK)
+        self.screen.blit(sub_text, (left_x + 10, y))
+        y += 26
+
+        bonus = scorecard.get_upper_section_bonus()
+        bonus_color = VALID_SCORE_COLOR if bonus > 0 else GRAY
+        bonus_text = total_font.render(f"Bonus: {bonus}", True, bonus_color)
+        self.screen.blit(bonus_text, (left_x + 10, y))
+
+        # --- Right column: Lower section ---
+        right_x = 550
+        y = 160
+
+        header = header_font.render("LOWER SECTION", True, SECTION_HEADER_COLOR)
+        self.screen.blit(header, (right_x, y))
+        y += 28
+
+        lower_cats = [Category.THREE_OF_KIND, Category.FOUR_OF_KIND,
+                      Category.FULL_HOUSE, Category.SMALL_STRAIGHT,
+                      Category.LARGE_STRAIGHT, Category.YAHTZEE, Category.CHANCE]
+        for cat in lower_cats:
+            score = scorecard.scores.get(cat, 0)
+            name_text = cat_font.render(cat.value, True, BLACK)
+            score_text = cat_font.render(str(score), True, BLACK)
+            self.screen.blit(name_text, (right_x + 10, y))
+            self.screen.blit(score_text, (right_x + 160, y))
+            y += 24
+
+        y += 6
+        lower_total = scorecard.get_lower_section_total()
+        sub_text = total_font.render(f"Subtotal: {lower_total}", True, BLACK)
+        self.screen.blit(sub_text, (right_x + 10, y))
+
+        # Grand total centered below both columns
+        grand_font = pygame.font.Font(None, 40)
+        grand_text = grand_font.render(f"GRAND TOTAL: {final_score}", True, BLACK)
+        grand_rect = grand_text.get_rect(center=(WINDOW_WIDTH // 2, 500))
+        self.screen.blit(grand_text, grand_rect)
 
         # Play again button
         self.play_again_button.draw(self.screen)
