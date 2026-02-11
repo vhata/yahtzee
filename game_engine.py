@@ -334,7 +334,7 @@ def toggle_die_hold(state: GameState, die_index: int) -> GameState:
     Returns:
         New GameState with die hold toggled
     """
-    if not (0 <= die_index < 5) or state.game_over:
+    if not (0 <= die_index < 5) or state.game_over or state.rolls_used == 0:
         return state
 
     dice_list = list(state.dice)
@@ -358,7 +358,7 @@ def select_category(state: GameState, category: Category) -> GameState:
         New GameState with category scored and turn advanced
     """
     # Validate category is available
-    if state.scorecard.is_filled(category) or state.game_over:
+    if state.scorecard.is_filled(category) or state.game_over or state.rolls_used == 0:
         return state
 
     # Calculate and set score
@@ -410,7 +410,7 @@ def can_select_category(state: GameState, category: Category) -> bool:
     Returns:
         True if category can be selected, False otherwise
     """
-    return not state.game_over and not state.scorecard.is_filled(category)
+    return not state.game_over and not state.scorecard.is_filled(category) and state.rolls_used > 0
 
 
 def reset_game() -> GameState:

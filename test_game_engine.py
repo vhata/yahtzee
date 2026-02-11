@@ -91,15 +91,19 @@ def test_roll_dice_increments_counter():
 def test_roll_dice_respects_held():
     """Test that held dice don't change when rolling"""
     state = GameState.create_initial()
-    # Hold first die
+    # Must roll first before we can hold
+    state = roll_dice(state)
     state = toggle_die_hold(state, 0)
     original_value = state.dice[0].value
 
-    # Roll multiple times
-    for _ in range(5):
-        state = roll_dice(state)
-        assert state.dice[0].value == original_value
-        assert state.dice[0].held == True
+    # Roll remaining times (already used 1 roll)
+    state = roll_dice(state)
+    assert state.dice[0].value == original_value
+    assert state.dice[0].held == True
+
+    state = roll_dice(state)
+    assert state.dice[0].value == original_value
+    assert state.dice[0].held == True
 
 
 def test_cannot_roll_more_than_three_times():
@@ -136,6 +140,7 @@ def test_can_roll_validation():
 def test_toggle_die_hold():
     """Test toggling die hold status"""
     state = GameState.create_initial()
+    state = roll_dice(state)  # Must roll before holding
     assert state.dice[2].held == False
 
     state = toggle_die_hold(state, 2)
@@ -148,6 +153,7 @@ def test_toggle_die_hold():
 def test_toggle_die_invalid_index():
     """Test that invalid die index is handled gracefully"""
     state = GameState.create_initial()
+    state = roll_dice(state)  # Must roll before holding
     original_state = state
 
     state = toggle_die_hold(state, 10)  # Invalid index
@@ -173,6 +179,7 @@ def test_select_category_advances_round():
     state = GameState.create_initial()
     assert state.current_round == 1
 
+    state = roll_dice(state)  # Must roll before scoring
     state = select_category(state, Category.CHANCE)
     assert state.current_round == 2
 
@@ -195,10 +202,13 @@ def test_select_category_resets_turn():
 def test_cannot_select_filled_category():
     """Test that can't select already filled category"""
     state = GameState.create_initial()
+    state = roll_dice(state)  # Must roll before scoring
     state = select_category(state, Category.ONES)
     round_after_first = state.current_round
 
-    # Try to select same category again
+    # Try to select same category again (roll first so we know it's the
+    # "already filled" check that blocks it, not the "must roll" check)
+    state = roll_dice(state)
     state = select_category(state, Category.ONES)
     assert state.current_round == round_after_first  # Round didn't advance
 
@@ -211,6 +221,7 @@ def test_game_ends_after_13_rounds():
     categories = list(Category)
     for cat in categories:
         assert state.game_over == False
+        state = roll_dice(state)  # Must roll before scoring
         state = select_category(state, cat)
 
     assert state.game_over == True
@@ -219,7 +230,7 @@ def test_game_ends_after_13_rounds():
 def test_reset_game():
     """Test resetting game creates fresh state"""
     state = GameState.create_initial()
-    state = roll_dice(state)
+    state = roll_dice(state)  # Must roll before scoring
     state = select_category(state, Category.CHANCE)
 
     new_state = reset_game()
@@ -479,6 +490,9 @@ def test_held_dice_across_rolls():
     """Test that holding dice persists across multiple rolls"""
     state = GameState.create_initial()
 
+    # Must roll first before holding
+    state = roll_dice(state)
+
     # Hold dice 0 and 2
     state = toggle_die_hold(state, 0)
     state = toggle_die_hold(state, 2)
@@ -486,11 +500,7 @@ def test_held_dice_across_rolls():
     original_val_0 = state.dice[0].value
     original_val_2 = state.dice[2].value
 
-    # Roll multiple times
-    state = roll_dice(state)
-    assert state.dice[0].value == original_val_0
-    assert state.dice[2].value == original_val_2
-
+    # Roll remaining times (already used 1 roll)
     state = roll_dice(state)
     assert state.dice[0].value == original_val_0
     assert state.dice[2].value == original_val_2
@@ -528,3 +538,119 @@ def test_scorecard_with_score():
     # Original only has first score
     assert original.scores[Category.ONES] == 5
     assert original.scores[Category.TWOS] is None
+
+
+# Test Illegal Action Prevention
+
+def test_cannot_score_without_rolling():
+    """Test that selecting a category without rolling first is rejected"""
+    state = GameState.create_initial()
+    assert state.rolls_used == 0
+
+    # Try to score without rolling - should be rejected
+    state_after = select_category(state, Category.CHANCE)
+    assert state_after == state  # State unchanged
+    assert not state_after.scorecard.is_filled(Category.CHANCE)
+    assert state_after.current_round == 1
+
+
+def test_can_select_category_requires_roll():
+    """Test that can_select_category returns False when no roll has been made"""
+    state = GameState.create_initial()
+    assert can_select_category(state, Category.ONES) == False
+
+    # After rolling, it should be allowed
+    state = roll_dice(state)
+    assert can_select_category(state, Category.ONES) == True
+
+
+def test_cannot_hold_dice_before_rolling():
+    """Test that toggling die hold before rolling is rejected"""
+    state = GameState.create_initial()
+    assert state.rolls_used == 0
+
+    # Try to hold a die without rolling first - should be rejected
+    state_after = toggle_die_hold(state, 0)
+    assert state_after == state  # State unchanged
+    assert state_after.dice[0].held == False
+
+
+def test_cannot_hold_dice_at_start_of_new_turn():
+    """Test that dice can't be held at the start of a new turn (after scoring resets rolls_used)"""
+    state = GameState.create_initial()
+    state = roll_dice(state)
+    state = select_category(state, Category.ONES)
+
+    # New turn - rolls_used is 0 again
+    assert state.rolls_used == 0
+
+    # Try to hold a die - should be rejected since we haven't rolled this turn
+    state_after = toggle_die_hold(state, 0)
+    assert state_after == state
+
+
+def test_score_without_rolling_does_not_advance_round():
+    """Test that failed scoring attempt doesn't advance the round"""
+    state = GameState.create_initial()
+    assert state.current_round == 1
+
+    # Attempt to score every category without rolling
+    for cat in Category:
+        state = select_category(state, cat)
+
+    # Nothing should have changed
+    assert state.current_round == 1
+    assert state.rolls_used == 0
+    assert not state.scorecard.is_complete()
+
+
+def test_can_score_after_one_roll():
+    """Test that scoring is allowed after just one roll (don't need all 3)"""
+    state = GameState.create_initial()
+    state = roll_dice(state)
+    assert state.rolls_used == 1
+
+    # Should be able to score after just 1 roll
+    state = select_category(state, Category.CHANCE)
+    assert state.scorecard.is_filled(Category.CHANCE)
+    assert state.current_round == 2
+
+
+def test_can_score_after_three_rolls():
+    """Test that scoring is allowed after all 3 rolls"""
+    state = GameState.create_initial()
+    state = roll_dice(state)
+    state = roll_dice(state)
+    state = roll_dice(state)
+    assert state.rolls_used == 3
+
+    state = select_category(state, Category.CHANCE)
+    assert state.scorecard.is_filled(Category.CHANCE)
+
+
+def test_hold_after_roll_then_score_resets_properly():
+    """Test full turn cycle: roll, hold, roll, score, then new turn starts clean"""
+    state = GameState.create_initial()
+
+    # Turn 1: roll, hold, roll again, score
+    state = roll_dice(state)
+    state = toggle_die_hold(state, 0)
+    assert state.dice[0].held == True
+    state = roll_dice(state)
+    state = select_category(state, Category.ONES)
+
+    # Turn 2 should start with clean state
+    assert state.rolls_used == 0
+    assert state.dice[0].held == False
+    assert state.current_round == 2
+
+    # Can't hold or score yet
+    assert toggle_die_hold(state, 0) == state
+    assert select_category(state, Category.TWOS) == state
+
+    # But can roll, then hold, then score
+    state = roll_dice(state)
+    state = toggle_die_hold(state, 1)
+    assert state.dice[1].held == True
+    state = select_category(state, Category.TWOS)
+    assert state.current_round == 3
