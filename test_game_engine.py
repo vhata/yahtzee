@@ -1,656 +1,1002 @@
 """
-Unit tests for Yahtzee game engine.
-Tests pure game logic without pygame dependencies.
+Exhaustive Yahtzee Rules Test Suite
+
+This test file is the authoritative specification of Yahtzee game rules.
+Every rule has both positive tests (what IS allowed) and negative tests
+(what is NOT allowed). If a behavior isn't tested here, it isn't guaranteed.
+
+Sections:
+    1. Dice — values, immutability, rolling, holding
+    2. Game Setup — initial state, reset
+    3. Rolling — when allowed, what changes, limits
+    4. Holding Dice — when allowed, toggling, persistence
+    5. Scoring a Category — when allowed, what it calculates, turn transitions
+    6. Scoring Rules — every category's formula, positive and negative cases
+    7. Scorecard — upper/lower sections, bonus, grand total
+    8. Game Flow — full game, round progression, game over
 """
 import pytest
 import random
+from dataclasses import replace
+
 from game_engine import (
     DieState, GameState, Category, Scorecard,
     roll_dice, toggle_die_hold, select_category,
     can_roll, can_select_category, reset_game,
     calculate_score, has_yahtzee, has_full_house,
-    has_small_straight, has_large_straight, has_n_of_kind
+    has_small_straight, has_large_straight, has_n_of_kind,
 )
 
 
-# Test Data Structures
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
-def test_die_state_creation():
-    """Test creating a DieState"""
-    die = DieState(value=5, held=False)
-    assert die.value == 5
-    assert die.held == False
+def make_dice(*values):
+    """Create a tuple of DieState from integer values."""
+    return tuple(DieState(value=v) for v in values)
 
 
-def test_die_state_immutable():
-    """Test that DieState is immutable"""
-    die = DieState(value=3, held=False)
-    with pytest.raises((AttributeError, Exception)):
-        die.value = 6
-
-
-def test_die_toggle_held():
-    """Test toggling held state"""
-    die = DieState(value=4, held=False)
-    die_held = die.toggle_held()
-    assert die_held.held == True
-    assert die_held.value == 4  # Value unchanged
-    assert die.held == False  # Original unchanged
-
-
-def test_die_roll_when_not_held():
-    """Test that rolling changes value when not held"""
-    random.seed(42)  # Deterministic test
-    die = DieState(value=1, held=False)
-    rolled = die.roll()
-    # Should be in valid range
-    assert 1 <= rolled.value <= 6
-    assert rolled.held == False
-
-
-def test_die_roll_when_held():
-    """Test that rolling preserves value when held"""
-    die = DieState(value=6, held=True)
-    rolled = die.roll()
-    assert rolled.value == 6
-    assert rolled.held == True
-
-
-def test_game_state_creation():
-    """Test creating initial game state"""
+def state_with_dice(*values, rolls_used=1):
+    """Create a GameState with specific dice values and rolls_used.
+    Defaults to rolls_used=1 so that scoring/holding are legal."""
     state = GameState.create_initial()
-    assert len(state.dice) == 5
-    assert state.rolls_used == 0
-    assert state.current_round == 1
-    assert state.game_over == False
-    assert isinstance(state.scorecard, Scorecard)
-
-
-def test_game_state_dice_values_in_range():
-    """Test that initial dice values are valid"""
-    state = GameState.create_initial()
-    for die in state.dice:
-        assert 1 <= die.value <= 6
-        assert die.held == False
-
-
-# Test Game Actions
-
-def test_roll_dice_increments_counter():
-    """Test that rolling increments the roll counter"""
-    state = GameState.create_initial()
-    assert state.rolls_used == 0
-
-    state = roll_dice(state)
-    assert state.rolls_used == 1
-
-    state = roll_dice(state)
-    assert state.rolls_used == 2
-
-
-def test_roll_dice_respects_held():
-    """Test that held dice don't change when rolling"""
-    state = GameState.create_initial()
-    # Must roll first before we can hold
-    state = roll_dice(state)
-    state = toggle_die_hold(state, 0)
-    original_value = state.dice[0].value
-
-    # Roll remaining times (already used 1 roll)
-    state = roll_dice(state)
-    assert state.dice[0].value == original_value
-    assert state.dice[0].held == True
-
-    state = roll_dice(state)
-    assert state.dice[0].value == original_value
-    assert state.dice[0].held == True
-
-
-def test_cannot_roll_more_than_three_times():
-    """Test that can't roll after 3 rolls"""
-    state = GameState.create_initial()
-
-    # Roll 3 times
-    state = roll_dice(state)
-    state = roll_dice(state)
-    state = roll_dice(state)
-    assert state.rolls_used == 3
-
-    # Try 4th roll - should be ignored
-    rolls_before = state.rolls_used
-    state = roll_dice(state)
-    assert state.rolls_used == rolls_before  # Still 3
-
-
-def test_can_roll_validation():
-    """Test can_roll helper function"""
-    state = GameState.create_initial()
-    assert can_roll(state) == True
-
-    # After 3 rolls
-    state = roll_dice(roll_dice(roll_dice(state)))
-    assert can_roll(state) == False
-
-    # When game over
-    from dataclasses import replace
-    state = replace(state, game_over=True)
-    assert can_roll(state) == False
-
-
-def test_toggle_die_hold():
-    """Test toggling die hold status"""
-    state = GameState.create_initial()
-    state = roll_dice(state)  # Must roll before holding
-    assert state.dice[2].held == False
-
-    state = toggle_die_hold(state, 2)
-    assert state.dice[2].held == True
-
-    state = toggle_die_hold(state, 2)
-    assert state.dice[2].held == False
-
-
-def test_toggle_die_invalid_index():
-    """Test that invalid die index is handled gracefully"""
-    state = GameState.create_initial()
-    state = roll_dice(state)  # Must roll before holding
-    original_state = state
-
-    state = toggle_die_hold(state, 10)  # Invalid index
-    assert state == original_state  # State unchanged
-
-
-def test_select_category_updates_scorecard():
-    """Test selecting a category updates the scorecard"""
-    # Create state with all 5s
-    dice = tuple(DieState(value=5, held=False) for _ in range(5))
-    from dataclasses import replace
-    state = GameState.create_initial()
-    state = replace(state, dice=dice, rolls_used=1)
-
-    state = select_category(state, Category.FIVES)
-
-    assert state.scorecard.is_filled(Category.FIVES)
-    assert state.scorecard.scores[Category.FIVES] == 25  # 5 * 5
-
-
-def test_select_category_advances_round():
-    """Test that selecting category advances to next round"""
-    state = GameState.create_initial()
-    assert state.current_round == 1
-
-    state = roll_dice(state)  # Must roll before scoring
-    state = select_category(state, Category.CHANCE)
-    assert state.current_round == 2
-
-
-def test_select_category_resets_turn():
-    """Test that selecting category resets turn state"""
-    state = GameState.create_initial()
-    state = roll_dice(roll_dice(state))  # 2 rolls
-    state = toggle_die_hold(state, 0)  # Hold a die
-
-    assert state.rolls_used == 2
-    assert state.dice[0].held == True
-
-    state = select_category(state, Category.ONES)
-
-    assert state.rolls_used == 0  # Reset
-    assert state.dice[0].held == False  # Reset
-
-
-def test_cannot_select_filled_category():
-    """Test that can't select already filled category"""
-    state = GameState.create_initial()
-    state = roll_dice(state)  # Must roll before scoring
-    state = select_category(state, Category.ONES)
-    round_after_first = state.current_round
-
-    # Try to select same category again (roll first so we know it's the
-    # "already filled" check that blocks it, not the "must roll" check)
-    state = roll_dice(state)
-    state = select_category(state, Category.ONES)
-    assert state.current_round == round_after_first  # Round didn't advance
-
-
-def test_game_ends_after_13_rounds():
-    """Test that game ends after all categories filled"""
-    state = GameState.create_initial()
-
-    # Fill all 13 categories
-    categories = list(Category)
-    for cat in categories:
-        assert state.game_over == False
-        state = roll_dice(state)  # Must roll before scoring
-        state = select_category(state, cat)
-
-    assert state.game_over == True
-
-
-def test_reset_game():
-    """Test resetting game creates fresh state"""
-    state = GameState.create_initial()
-    state = roll_dice(state)  # Must roll before scoring
-    state = select_category(state, Category.CHANCE)
-
-    new_state = reset_game()
-
-    assert new_state.rolls_used == 0
-    assert new_state.current_round == 1
-    assert new_state.game_over == False
-    assert not new_state.scorecard.is_filled(Category.CHANCE)
-
-
-# Test Scoring Functions
-
-def test_yahtzee_scoring():
-    """Test Yahtzee scoring (all same value)"""
-    dice = tuple(DieState(value=5, held=False) for _ in range(5))
-    score = calculate_score(Category.YAHTZEE, dice)
-    assert score == 50
-
-
-def test_yahtzee_scoring_failure():
-    """Test Yahtzee scores 0 when not all same"""
-    dice = (
-        DieState(5), DieState(5), DieState(5), DieState(5), DieState(4)
-    )
-    score = calculate_score(Category.YAHTZEE, dice)
-    assert score == 0
-
-
-def test_full_house_scoring():
-    """Test full house scoring (3 of one, 2 of another)"""
-    dice = (
-        DieState(3), DieState(3), DieState(3), DieState(6), DieState(6)
-    )
-    score = calculate_score(Category.FULL_HOUSE, dice)
-    assert score == 25
-
-
-def test_full_house_scoring_failure():
-    """Test full house scores 0 when not 3+2"""
-    dice = (
-        DieState(3), DieState(3), DieState(3), DieState(3), DieState(6)
-    )
-    score = calculate_score(Category.FULL_HOUSE, dice)
-    assert score == 0
-
-
-def test_large_straight_scoring():
-    """Test large straight scoring (1-2-3-4-5 or 2-3-4-5-6)"""
-    dice = (
-        DieState(1), DieState(2), DieState(3), DieState(4), DieState(5)
-    )
-    score = calculate_score(Category.LARGE_STRAIGHT, dice)
-    assert score == 40
-
-
-def test_large_straight_scoring_alt():
-    """Test large straight with 2-3-4-5-6"""
-    dice = (
-        DieState(2), DieState(3), DieState(4), DieState(5), DieState(6)
-    )
-    score = calculate_score(Category.LARGE_STRAIGHT, dice)
-    assert score == 40
-
-
-def test_small_straight_scoring():
-    """Test small straight scoring (4 consecutive)"""
-    dice = (
-        DieState(1), DieState(2), DieState(3), DieState(4), DieState(6)
-    )
-    score = calculate_score(Category.SMALL_STRAIGHT, dice)
-    assert score == 30
-
-
-def test_small_straight_in_sequence():
-    """Test small straight with 2-3-4-5"""
-    dice = (
-        DieState(2), DieState(3), DieState(4), DieState(5), DieState(1)
-    )
-    score = calculate_score(Category.SMALL_STRAIGHT, dice)
-    assert score == 30
-
-
-def test_upper_section_scoring():
-    """Test upper section categories (sum of matching dice)"""
-    dice = (
-        DieState(3), DieState(3), DieState(5), DieState(3), DieState(1)
-    )
-    score = calculate_score(Category.THREES, dice)
-    assert score == 9  # Three 3s
-
-
-def test_upper_section_all_categories():
-    """Test all upper section categories"""
-    dice = (
-        DieState(1), DieState(2), DieState(3), DieState(4), DieState(5)
-    )
-    assert calculate_score(Category.ONES, dice) == 1
-    assert calculate_score(Category.TWOS, dice) == 2
-    assert calculate_score(Category.THREES, dice) == 3
-    assert calculate_score(Category.FOURS, dice) == 4
-    assert calculate_score(Category.FIVES, dice) == 5
-    assert calculate_score(Category.SIXES, dice) == 0
-
-
-def test_chance_scoring():
-    """Test chance scoring (sum of all dice)"""
-    dice = (
-        DieState(1), DieState(2), DieState(3), DieState(4), DieState(5)
-    )
-    score = calculate_score(Category.CHANCE, dice)
-    assert score == 15
-
-
-def test_three_of_kind_scoring():
-    """Test 3 of a kind scoring (sum all dice if 3+ match)"""
-    dice = (
-        DieState(4), DieState(4), DieState(4), DieState(2), DieState(1)
-    )
-    score = calculate_score(Category.THREE_OF_KIND, dice)
-    assert score == 15  # Sum all: 4+4+4+2+1
-
-
-def test_three_of_kind_scoring_failure():
-    """Test 3 of a kind scores 0 when only 2 match"""
-    dice = (
-        DieState(4), DieState(4), DieState(3), DieState(2), DieState(1)
-    )
-    score = calculate_score(Category.THREE_OF_KIND, dice)
-    assert score == 0
-
-
-def test_four_of_kind_scoring():
-    """Test 4 of a kind scoring (sum all dice if 4+ match)"""
-    dice = (
-        DieState(6), DieState(6), DieState(6), DieState(6), DieState(2)
-    )
-    score = calculate_score(Category.FOUR_OF_KIND, dice)
-    assert score == 26  # Sum all: 6+6+6+6+2
-
-
-def test_upper_section_bonus():
-    """Test upper section bonus calculation"""
-    scorecard = Scorecard()
-    # Fill upper section with values totaling >= 63
-    scorecard.set_score(Category.ONES, 3)
-    scorecard.set_score(Category.TWOS, 6)
-    scorecard.set_score(Category.THREES, 9)
-    scorecard.set_score(Category.FOURS, 12)
-    scorecard.set_score(Category.FIVES, 15)
-    scorecard.set_score(Category.SIXES, 18)
-
-    assert scorecard.get_upper_section_total() == 63
-    assert scorecard.get_upper_section_bonus() == 35
-
-
-def test_upper_section_no_bonus():
-    """Test no bonus when upper section < 63"""
-    scorecard = Scorecard()
-    scorecard.set_score(Category.ONES, 1)
-    scorecard.set_score(Category.TWOS, 2)
-
-    assert scorecard.get_upper_section_total() == 3
-    assert scorecard.get_upper_section_bonus() == 0
-
-
-def test_scorecard_grand_total():
-    """Test grand total calculation"""
-    scorecard = Scorecard()
-    scorecard.set_score(Category.ONES, 3)
-    scorecard.set_score(Category.YAHTZEE, 50)
-
-    total = scorecard.get_grand_total()
-    assert total == 53  # 3 + 0 (no bonus) + 50
-
-
-# Test Helper Functions
-
-def test_has_n_of_kind():
-    """Test has_n_of_kind helper"""
-    dice = (
-        DieState(3), DieState(3), DieState(3), DieState(1), DieState(2)
-    )
-    assert has_n_of_kind(dice, 3) == True
-    assert has_n_of_kind(dice, 4) == False
-    assert has_n_of_kind(dice, 2) == True
-
-
-def test_has_yahtzee():
-    """Test has_yahtzee helper"""
-    all_fives = tuple(DieState(5) for _ in range(5))
-    assert has_yahtzee(all_fives) == True
-
-    mixed = (DieState(5), DieState(5), DieState(5), DieState(5), DieState(1))
-    assert has_yahtzee(mixed) == False
-
-
-def test_has_full_house():
-    """Test has_full_house helper"""
-    full_house = (DieState(2), DieState(2), DieState(3), DieState(3), DieState(3))
-    assert has_full_house(full_house) == True
-
-    not_full_house = (DieState(2), DieState(2), DieState(2), DieState(3), DieState(4))
-    assert has_full_house(not_full_house) == False
-
-
-def test_has_small_straight():
-    """Test has_small_straight helper"""
-    straight = (DieState(1), DieState(2), DieState(3), DieState(4), DieState(6))
-    assert has_small_straight(straight) == True
-
-    not_straight = (DieState(1), DieState(2), DieState(4), DieState(5), DieState(6))
-    assert has_small_straight(not_straight) == False
-
-
-def test_has_large_straight():
-    """Test has_large_straight helper"""
-    straight = (DieState(1), DieState(2), DieState(3), DieState(4), DieState(5))
-    assert has_large_straight(straight) == True
-
-    not_straight = (DieState(1), DieState(2), DieState(3), DieState(4), DieState(6))
-    assert has_large_straight(not_straight) == False
-
-
-# Integration Tests
-
-def test_complete_game_flow():
-    """Integration test: play a complete game programmatically"""
-    state = GameState.create_initial()
-
-    # Play 13 rounds
-    for round_num in range(1, 14):
-        assert state.current_round == round_num
-        assert not state.game_over
-
-        # Roll dice 3 times
+    return replace(state, dice=make_dice(*values), rolls_used=rolls_used)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 1. DICE
+#    Rule: Each die has a value from 1 to 6 and a held/unheld status.
+#    Rule: DieState is immutable — operations return new instances.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestDieState:
+
+    def test_die_has_value_and_held_status(self):
+        die = DieState(value=3, held=False)
+        assert die.value == 3
+        assert die.held is False
+
+    def test_die_defaults_to_unheld(self):
+        die = DieState(value=4)
+        assert die.held is False
+
+    def test_die_is_immutable(self):
+        die = DieState(value=3, held=False)
+        with pytest.raises((AttributeError, Exception)):
+            die.value = 6
+
+    def test_rolling_unheld_die_produces_value_1_through_6(self):
+        die = DieState(value=1, held=False)
+        seen = set()
+        for seed in range(200):
+            random.seed(seed)
+            seen.add(die.roll().value)
+        assert seen == {1, 2, 3, 4, 5, 6}
+
+    def test_rolling_unheld_die_does_not_hold_it(self):
+        die = DieState(value=1, held=False)
+        assert die.roll().held is False
+
+    def test_rolling_held_die_preserves_value(self):
+        for v in range(1, 7):
+            die = DieState(value=v, held=True)
+            assert die.roll().value == v
+
+    def test_rolling_held_die_keeps_it_held(self):
+        die = DieState(value=5, held=True)
+        assert die.roll().held is True
+
+    def test_toggle_held_flips_false_to_true(self):
+        die = DieState(value=4, held=False)
+        assert die.toggle_held().held is True
+
+    def test_toggle_held_flips_true_to_false(self):
+        die = DieState(value=4, held=True)
+        assert die.toggle_held().held is False
+
+    def test_toggle_held_preserves_value(self):
+        die = DieState(value=6, held=False)
+        assert die.toggle_held().value == 6
+
+    def test_toggle_held_returns_new_instance(self):
+        die = DieState(value=4, held=False)
+        toggled = die.toggle_held()
+        assert die.held is False  # original unchanged
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 2. GAME SETUP
+#    Rule: A new game starts with 5 dice (values 1-6, all unheld),
+#          rolls_used=0, round 1, game not over, all categories empty.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestGameSetup:
+
+    def test_initial_state_has_five_dice(self):
+        state = GameState.create_initial()
+        assert len(state.dice) == 5
+
+    def test_initial_dice_values_are_1_through_6(self):
+        state = GameState.create_initial()
+        for die in state.dice:
+            assert 1 <= die.value <= 6
+
+    def test_initial_dice_are_all_unheld(self):
+        state = GameState.create_initial()
+        for die in state.dice:
+            assert die.held is False
+
+    def test_initial_rolls_used_is_zero(self):
+        state = GameState.create_initial()
+        assert state.rolls_used == 0
+
+    def test_initial_round_is_one(self):
+        state = GameState.create_initial()
+        assert state.current_round == 1
+
+    def test_initial_game_is_not_over(self):
+        state = GameState.create_initial()
+        assert state.game_over is False
+
+    def test_initial_scorecard_is_all_empty(self):
+        state = GameState.create_initial()
+        for cat in Category:
+            assert not state.scorecard.is_filled(cat)
+
+    def test_reset_game_returns_fresh_state(self):
+        state = GameState.create_initial()
         state = roll_dice(state)
+        state = select_category(state, Category.CHANCE)
+
+        fresh = reset_game()
+        assert fresh.rolls_used == 0
+        assert fresh.current_round == 1
+        assert fresh.game_over is False
+        for cat in Category:
+            assert not fresh.scorecard.is_filled(cat)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 3. ROLLING
+#    Rule: Player gets up to 3 rolls per turn.
+#    Rule: Rolling re-randomizes unheld dice and increments rolls_used.
+#    Rule: Cannot roll when game is over.
+#    Rule: Cannot roll after 3 rolls used.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestRolling:
+
+    # ── What's allowed ──
+
+    def test_can_roll_at_start_of_turn(self):
+        state = GameState.create_initial()
+        assert can_roll(state) is True
+
+    def test_first_roll_sets_rolls_used_to_1(self):
+        state = GameState.create_initial()
+        state = roll_dice(state)
+        assert state.rolls_used == 1
+
+    def test_second_roll_sets_rolls_used_to_2(self):
+        state = GameState.create_initial()
+        state = roll_dice(roll_dice(state))
+        assert state.rolls_used == 2
+
+    def test_third_roll_sets_rolls_used_to_3(self):
+        state = GameState.create_initial()
+        state = roll_dice(roll_dice(roll_dice(state)))
+        assert state.rolls_used == 3
+
+    def test_can_roll_after_1_roll(self):
+        state = roll_dice(GameState.create_initial())
+        assert can_roll(state) is True
+
+    def test_can_roll_after_2_rolls(self):
+        state = roll_dice(roll_dice(GameState.create_initial()))
+        assert can_roll(state) is True
+
+    def test_roll_produces_values_1_through_6(self):
+        seen = set()
+        for seed in range(200):
+            random.seed(seed)
+            state = roll_dice(GameState.create_initial())
+            for die in state.dice:
+                seen.add(die.value)
+        assert seen == {1, 2, 3, 4, 5, 6}
+
+    def test_roll_does_not_change_held_dice(self):
+        state = GameState.create_initial()
+        state = roll_dice(state)
+        state = toggle_die_hold(state, 0)
+        val = state.dice[0].value
+
+        state = roll_dice(state)
+        assert state.dice[0].value == val
+        assert state.dice[0].held is True
+
+    def test_roll_leaves_dice_unheld_by_default(self):
+        state = roll_dice(GameState.create_initial())
+        for die in state.dice:
+            assert die.held is False
+
+    # ── What's forbidden ──
+
+    def test_cannot_roll_after_3_rolls(self):
+        state = roll_dice(roll_dice(roll_dice(GameState.create_initial())))
+        assert can_roll(state) is False
+
+    def test_fourth_roll_is_no_op(self):
+        state = roll_dice(roll_dice(roll_dice(GameState.create_initial())))
+        before = state
+        after = roll_dice(state)
+        assert after.rolls_used == 3
+        assert after.dice == before.dice
+
+    def test_cannot_roll_when_game_over(self):
+        state = replace(GameState.create_initial(), game_over=True)
+        assert can_roll(state) is False
+        after = roll_dice(state)
+        assert after == state
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 4. HOLDING DICE
+#    Rule: After rolling at least once, player may hold/unhold any die.
+#    Rule: Held dice keep their value on the next roll.
+#    Rule: Cannot hold dice before the first roll of a turn.
+#    Rule: Cannot hold dice when game is over.
+#    Rule: Invalid die indices (outside 0-4) are rejected.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestHoldingDice:
+
+    # ── What's allowed ──
+
+    def test_can_hold_any_die_after_rolling(self):
+        state = roll_dice(GameState.create_initial())
+        for i in range(5):
+            s = toggle_die_hold(state, i)
+            assert s.dice[i].held is True
+
+    def test_can_unhold_a_held_die(self):
+        state = roll_dice(GameState.create_initial())
+        state = toggle_die_hold(state, 2)
+        assert state.dice[2].held is True
+        state = toggle_die_hold(state, 2)
+        assert state.dice[2].held is False
+
+    def test_hold_does_not_change_die_value(self):
+        state = roll_dice(GameState.create_initial())
+        val = state.dice[3].value
+        state = toggle_die_hold(state, 3)
+        assert state.dice[3].value == val
+
+    def test_hold_does_not_affect_other_dice(self):
+        state = roll_dice(GameState.create_initial())
+        before = [d.held for d in state.dice]
+        state = toggle_die_hold(state, 2)
+        for i in range(5):
+            if i != 2:
+                assert state.dice[i].held == before[i]
+
+    def test_can_hold_multiple_dice(self):
+        state = roll_dice(GameState.create_initial())
+        state = toggle_die_hold(state, 0)
+        state = toggle_die_hold(state, 3)
+        state = toggle_die_hold(state, 4)
+        assert state.dice[0].held is True
+        assert state.dice[1].held is False
+        assert state.dice[2].held is False
+        assert state.dice[3].held is True
+        assert state.dice[4].held is True
+
+    def test_can_hold_all_five_dice(self):
+        state = roll_dice(GameState.create_initial())
+        for i in range(5):
+            state = toggle_die_hold(state, i)
+        for die in state.dice:
+            assert die.held is True
+
+    def test_held_dice_persist_across_rolls(self):
+        state = roll_dice(GameState.create_initial())
+        state = toggle_die_hold(state, 0)
+        state = toggle_die_hold(state, 2)
+        val0 = state.dice[0].value
+        val2 = state.dice[2].value
+
+        state = roll_dice(state)
+        assert state.dice[0].value == val0
+        assert state.dice[2].value == val2
+
+        state = roll_dice(state)
+        assert state.dice[0].value == val0
+        assert state.dice[2].value == val2
+
+    # ── What's forbidden ──
+
+    def test_cannot_hold_before_first_roll(self):
+        state = GameState.create_initial()
+        for i in range(5):
+            assert toggle_die_hold(state, i) == state
+
+    def test_cannot_hold_at_start_of_new_turn(self):
+        """After scoring, rolls_used resets to 0 — holding is blocked again."""
+        state = roll_dice(GameState.create_initial())
+        state = select_category(state, Category.ONES)
+        assert state.rolls_used == 0
+        for i in range(5):
+            assert toggle_die_hold(state, i) == state
+
+    def test_cannot_hold_when_game_over(self):
+        state = replace(roll_dice(GameState.create_initial()), game_over=True)
+        for i in range(5):
+            assert toggle_die_hold(state, i) == state
+
+    def test_invalid_index_negative(self):
+        state = roll_dice(GameState.create_initial())
+        assert toggle_die_hold(state, -1) == state
+
+    def test_invalid_index_too_large(self):
+        state = roll_dice(GameState.create_initial())
+        assert toggle_die_hold(state, 5) == state
+        assert toggle_die_hold(state, 10) == state
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 5. SCORING A CATEGORY (turn mechanics)
+#    Rule: Must roll at least once before scoring.
+#    Rule: Can score after 1, 2, or 3 rolls.
+#    Rule: Can only score in an unfilled category.
+#    Rule: Cannot score when game is over.
+#    Rule: Scoring calculates the correct value for the chosen category.
+#    Rule: After scoring, rolls_used resets to 0.
+#    Rule: After scoring, all dice become unheld.
+#    Rule: After scoring (if game not complete), round advances by 1.
+#    Rule: After filling all 13 categories, game_over becomes True.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestScoringTurnMechanics:
+
+    # ── What's allowed ──
+
+    def test_can_score_after_one_roll(self):
+        state = roll_dice(GameState.create_initial())
+        assert can_select_category(state, Category.CHANCE) is True
+        state = select_category(state, Category.CHANCE)
+        assert state.scorecard.is_filled(Category.CHANCE)
+
+    def test_can_score_after_two_rolls(self):
+        state = roll_dice(roll_dice(GameState.create_initial()))
+        state = select_category(state, Category.CHANCE)
+        assert state.scorecard.is_filled(Category.CHANCE)
+
+    def test_can_score_after_three_rolls(self):
+        state = roll_dice(roll_dice(roll_dice(GameState.create_initial())))
+        state = select_category(state, Category.CHANCE)
+        assert state.scorecard.is_filled(Category.CHANCE)
+
+    def test_scoring_records_correct_value(self):
+        state = state_with_dice(5, 5, 5, 5, 5)
+        state = select_category(state, Category.FIVES)
+        assert state.scorecard.scores[Category.FIVES] == 25
+
+    def test_scoring_resets_rolls_used_to_zero(self):
+        state = roll_dice(roll_dice(GameState.create_initial()))
+        assert state.rolls_used == 2
+        state = select_category(state, Category.ONES)
+        assert state.rolls_used == 0
+
+    def test_scoring_unholds_all_dice(self):
+        state = roll_dice(GameState.create_initial())
+        state = toggle_die_hold(state, 0)
+        state = toggle_die_hold(state, 3)
+        state = select_category(state, Category.ONES)
+        for die in state.dice:
+            assert die.held is False
+
+    def test_scoring_advances_round(self):
+        state = roll_dice(GameState.create_initial())
+        assert state.current_round == 1
+        state = select_category(state, Category.ONES)
+        assert state.current_round == 2
+
+    def test_can_score_any_unfilled_category(self):
+        """Every unfilled category is available to score into."""
+        state = roll_dice(GameState.create_initial())
+        for cat in Category:
+            assert can_select_category(state, cat) is True
+
+    # ── What's forbidden ──
+
+    def test_cannot_score_without_rolling(self):
+        state = GameState.create_initial()
+        for cat in Category:
+            assert can_select_category(state, cat) is False
+            assert select_category(state, cat) == state
+
+    def test_cannot_score_already_filled_category(self):
+        state = roll_dice(GameState.create_initial())
+        state = select_category(state, Category.ONES)
+        state = roll_dice(state)
+        assert can_select_category(state, Category.ONES) is False
+        round_before = state.current_round
+        state = select_category(state, Category.ONES)
+        assert state.current_round == round_before  # no change
+
+    def test_cannot_score_when_game_over(self):
+        state = replace(
+            roll_dice(GameState.create_initial()),
+            game_over=True
+        )
+        for cat in Category:
+            assert can_select_category(state, cat) is False
+            assert select_category(state, cat) == state
+
+    def test_scoring_without_rolling_does_not_advance_round(self):
+        state = GameState.create_initial()
+        for cat in Category:
+            state = select_category(state, cat)
+        assert state.current_round == 1
+        assert not state.scorecard.is_complete()
+
+    def test_scoring_without_rolling_does_not_fill_category(self):
+        state = GameState.create_initial()
+        state = select_category(state, Category.YAHTZEE)
+        assert not state.scorecard.is_filled(Category.YAHTZEE)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 6. SCORING RULES — every category formula
+#    Upper section: sum of dice matching that number
+#    Three of a Kind: sum of all dice if 3+ match
+#    Four of a Kind: sum of all dice if 4+ match
+#    Full House: 25 if exactly 3+2 distinct values
+#    Small Straight: 30 if 4 consecutive values
+#    Large Straight: 40 if 5 consecutive values
+#    Yahtzee: 50 if all 5 dice match
+#    Chance: sum of all dice (always)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestScoringOnes:
+    def test_all_ones(self):
+        assert calculate_score(Category.ONES, make_dice(1, 1, 1, 1, 1)) == 5
+
+    def test_some_ones(self):
+        assert calculate_score(Category.ONES, make_dice(1, 1, 3, 4, 5)) == 2
+
+    def test_one_one(self):
+        assert calculate_score(Category.ONES, make_dice(1, 2, 3, 4, 5)) == 1
+
+    def test_no_ones(self):
+        assert calculate_score(Category.ONES, make_dice(2, 3, 4, 5, 6)) == 0
+
+
+class TestScoringTwos:
+    def test_all_twos(self):
+        assert calculate_score(Category.TWOS, make_dice(2, 2, 2, 2, 2)) == 10
+
+    def test_some_twos(self):
+        assert calculate_score(Category.TWOS, make_dice(2, 2, 3, 4, 5)) == 4
+
+    def test_no_twos(self):
+        assert calculate_score(Category.TWOS, make_dice(1, 3, 4, 5, 6)) == 0
+
+
+class TestScoringThrees:
+    def test_all_threes(self):
+        assert calculate_score(Category.THREES, make_dice(3, 3, 3, 3, 3)) == 15
+
+    def test_some_threes(self):
+        assert calculate_score(Category.THREES, make_dice(3, 3, 3, 1, 5)) == 9
+
+    def test_no_threes(self):
+        assert calculate_score(Category.THREES, make_dice(1, 2, 4, 5, 6)) == 0
+
+
+class TestScoringFours:
+    def test_all_fours(self):
+        assert calculate_score(Category.FOURS, make_dice(4, 4, 4, 4, 4)) == 20
+
+    def test_some_fours(self):
+        assert calculate_score(Category.FOURS, make_dice(4, 4, 1, 2, 3)) == 8
+
+    def test_no_fours(self):
+        assert calculate_score(Category.FOURS, make_dice(1, 2, 3, 5, 6)) == 0
+
+
+class TestScoringFives:
+    def test_all_fives(self):
+        assert calculate_score(Category.FIVES, make_dice(5, 5, 5, 5, 5)) == 25
+
+    def test_some_fives(self):
+        assert calculate_score(Category.FIVES, make_dice(5, 5, 1, 2, 3)) == 10
+
+    def test_no_fives(self):
+        assert calculate_score(Category.FIVES, make_dice(1, 2, 3, 4, 6)) == 0
+
+
+class TestScoringSixes:
+    def test_all_sixes(self):
+        assert calculate_score(Category.SIXES, make_dice(6, 6, 6, 6, 6)) == 30
+
+    def test_some_sixes(self):
+        assert calculate_score(Category.SIXES, make_dice(6, 6, 1, 2, 3)) == 12
+
+    def test_no_sixes(self):
+        assert calculate_score(Category.SIXES, make_dice(1, 2, 3, 4, 5)) == 0
+
+
+class TestScoringThreeOfAKind:
+    """Three of a Kind: if 3+ dice share a value, score = sum of ALL dice. Else 0."""
+
+    def test_exactly_three_matching(self):
+        assert calculate_score(Category.THREE_OF_KIND, make_dice(4, 4, 4, 2, 1)) == 15
+
+    def test_four_matching_also_qualifies(self):
+        assert calculate_score(Category.THREE_OF_KIND, make_dice(3, 3, 3, 3, 1)) == 13
+
+    def test_five_matching_also_qualifies(self):
+        assert calculate_score(Category.THREE_OF_KIND, make_dice(6, 6, 6, 6, 6)) == 30
+
+    def test_only_two_matching_scores_zero(self):
+        assert calculate_score(Category.THREE_OF_KIND, make_dice(4, 4, 3, 2, 1)) == 0
+
+    def test_all_different_scores_zero(self):
+        assert calculate_score(Category.THREE_OF_KIND, make_dice(1, 2, 3, 4, 5)) == 0
+
+
+class TestScoringFourOfAKind:
+    """Four of a Kind: if 4+ dice share a value, score = sum of ALL dice. Else 0."""
+
+    def test_exactly_four_matching(self):
+        assert calculate_score(Category.FOUR_OF_KIND, make_dice(6, 6, 6, 6, 2)) == 26
+
+    def test_five_matching_also_qualifies(self):
+        assert calculate_score(Category.FOUR_OF_KIND, make_dice(5, 5, 5, 5, 5)) == 25
+
+    def test_only_three_matching_scores_zero(self):
+        assert calculate_score(Category.FOUR_OF_KIND, make_dice(3, 3, 3, 2, 1)) == 0
+
+    def test_two_pair_scores_zero(self):
+        assert calculate_score(Category.FOUR_OF_KIND, make_dice(3, 3, 2, 2, 1)) == 0
+
+
+class TestScoringFullHouse:
+    """Full House: exactly 3 of one value AND 2 of another = 25 points. Else 0."""
+
+    def test_three_and_two(self):
+        assert calculate_score(Category.FULL_HOUSE, make_dice(3, 3, 3, 6, 6)) == 25
+
+    def test_two_and_three_reversed_order(self):
+        assert calculate_score(Category.FULL_HOUSE, make_dice(2, 2, 5, 5, 5)) == 25
+
+    def test_four_of_kind_is_not_full_house(self):
+        assert calculate_score(Category.FULL_HOUSE, make_dice(3, 3, 3, 3, 6)) == 0
+
+    def test_yahtzee_is_not_full_house(self):
+        assert calculate_score(Category.FULL_HOUSE, make_dice(4, 4, 4, 4, 4)) == 0
+
+    def test_all_different_is_not_full_house(self):
+        assert calculate_score(Category.FULL_HOUSE, make_dice(1, 2, 3, 4, 5)) == 0
+
+    def test_three_of_kind_with_two_singletons_is_not_full_house(self):
+        assert calculate_score(Category.FULL_HOUSE, make_dice(2, 2, 2, 3, 4)) == 0
+
+
+class TestScoringSmallStraight:
+    """Small Straight: 4 consecutive values present = 30 points. Else 0."""
+
+    def test_1_2_3_4_with_extra(self):
+        assert calculate_score(Category.SMALL_STRAIGHT, make_dice(1, 2, 3, 4, 6)) == 30
+
+    def test_2_3_4_5_with_extra(self):
+        assert calculate_score(Category.SMALL_STRAIGHT, make_dice(2, 3, 4, 5, 1)) == 30
+
+    def test_3_4_5_6_with_extra(self):
+        assert calculate_score(Category.SMALL_STRAIGHT, make_dice(3, 4, 5, 6, 1)) == 30
+
+    def test_large_straight_also_qualifies(self):
+        assert calculate_score(Category.SMALL_STRAIGHT, make_dice(1, 2, 3, 4, 5)) == 30
+        assert calculate_score(Category.SMALL_STRAIGHT, make_dice(2, 3, 4, 5, 6)) == 30
+
+    def test_with_duplicate_in_straight(self):
+        assert calculate_score(Category.SMALL_STRAIGHT, make_dice(1, 2, 3, 4, 4)) == 30
+
+    def test_only_three_consecutive_scores_zero(self):
+        assert calculate_score(Category.SMALL_STRAIGHT, make_dice(1, 2, 3, 5, 6)) == 0
+
+    def test_all_same_scores_zero(self):
+        assert calculate_score(Category.SMALL_STRAIGHT, make_dice(3, 3, 3, 3, 3)) == 0
+
+    def test_gap_in_middle_scores_zero(self):
+        assert calculate_score(Category.SMALL_STRAIGHT, make_dice(1, 2, 4, 5, 6)) == 0
+
+    def test_unsorted_still_detected(self):
+        assert calculate_score(Category.SMALL_STRAIGHT, make_dice(4, 1, 3, 2, 6)) == 30
+
+
+class TestScoringLargeStraight:
+    """Large Straight: 5 consecutive values (1-2-3-4-5 or 2-3-4-5-6) = 40. Else 0."""
+
+    def test_1_through_5(self):
+        assert calculate_score(Category.LARGE_STRAIGHT, make_dice(1, 2, 3, 4, 5)) == 40
+
+    def test_2_through_6(self):
+        assert calculate_score(Category.LARGE_STRAIGHT, make_dice(2, 3, 4, 5, 6)) == 40
+
+    def test_unsorted_still_detected(self):
+        assert calculate_score(Category.LARGE_STRAIGHT, make_dice(5, 3, 1, 4, 2)) == 40
+
+    def test_only_small_straight_scores_zero(self):
+        assert calculate_score(Category.LARGE_STRAIGHT, make_dice(1, 2, 3, 4, 6)) == 0
+
+    def test_four_consecutive_plus_duplicate_scores_zero(self):
+        assert calculate_score(Category.LARGE_STRAIGHT, make_dice(1, 2, 3, 4, 4)) == 0
+
+    def test_all_same_scores_zero(self):
+        assert calculate_score(Category.LARGE_STRAIGHT, make_dice(5, 5, 5, 5, 5)) == 0
+
+
+class TestScoringYahtzee:
+    """Yahtzee: all 5 dice the same value = 50 points. Else 0."""
+
+    def test_all_ones(self):
+        assert calculate_score(Category.YAHTZEE, make_dice(1, 1, 1, 1, 1)) == 50
+
+    def test_all_sixes(self):
+        assert calculate_score(Category.YAHTZEE, make_dice(6, 6, 6, 6, 6)) == 50
+
+    def test_four_matching_scores_zero(self):
+        assert calculate_score(Category.YAHTZEE, make_dice(5, 5, 5, 5, 4)) == 0
+
+    def test_all_different_scores_zero(self):
+        assert calculate_score(Category.YAHTZEE, make_dice(1, 2, 3, 4, 5)) == 0
+
+
+class TestScoringChance:
+    """Chance: always sum of all dice. No conditions."""
+
+    def test_sum_of_mixed_dice(self):
+        assert calculate_score(Category.CHANCE, make_dice(1, 2, 3, 4, 5)) == 15
+
+    def test_all_ones_minimum(self):
+        assert calculate_score(Category.CHANCE, make_dice(1, 1, 1, 1, 1)) == 5
+
+    def test_all_sixes_maximum(self):
+        assert calculate_score(Category.CHANCE, make_dice(6, 6, 6, 6, 6)) == 30
+
+    def test_arbitrary_dice(self):
+        assert calculate_score(Category.CHANCE, make_dice(2, 3, 3, 5, 6)) == 19
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 6b. SCORING HELPER FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestScoringHelpers:
+
+    def test_has_n_of_kind_detects_pairs(self):
+        assert has_n_of_kind(make_dice(3, 3, 1, 2, 4), 2) is True
+
+    def test_has_n_of_kind_detects_three(self):
+        assert has_n_of_kind(make_dice(3, 3, 3, 1, 2), 3) is True
+
+    def test_has_n_of_kind_rejects_insufficient(self):
+        assert has_n_of_kind(make_dice(3, 3, 1, 2, 4), 3) is False
+
+    def test_has_yahtzee_true(self):
+        assert has_yahtzee(make_dice(5, 5, 5, 5, 5)) is True
+
+    def test_has_yahtzee_false(self):
+        assert has_yahtzee(make_dice(5, 5, 5, 5, 1)) is False
+
+    def test_has_full_house_true(self):
+        assert has_full_house(make_dice(2, 2, 3, 3, 3)) is True
+
+    def test_has_full_house_false(self):
+        assert has_full_house(make_dice(2, 2, 2, 3, 4)) is False
+
+    def test_has_small_straight_true(self):
+        assert has_small_straight(make_dice(1, 2, 3, 4, 6)) is True
+
+    def test_has_small_straight_false(self):
+        assert has_small_straight(make_dice(1, 2, 4, 5, 6)) is False
+
+    def test_has_large_straight_true(self):
+        assert has_large_straight(make_dice(1, 2, 3, 4, 5)) is True
+
+    def test_has_large_straight_false(self):
+        assert has_large_straight(make_dice(1, 2, 3, 4, 6)) is False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 7. SCORECARD
+#    Rule: 13 categories, each filled at most once.
+#    Rule: Upper section = Ones through Sixes. Bonus of 35 if total >= 63.
+#    Rule: Lower section = Three of a Kind through Chance.
+#    Rule: Grand total = upper total + bonus + lower total.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestScorecard:
+
+    def test_new_scorecard_has_13_empty_categories(self):
+        sc = Scorecard()
+        assert len(sc.scores) == 13
+        for cat in Category:
+            assert sc.scores[cat] is None
+
+    def test_is_filled_false_when_empty(self):
+        sc = Scorecard()
+        for cat in Category:
+            assert sc.is_filled(cat) is False
+
+    def test_is_filled_true_after_set(self):
+        sc = Scorecard()
+        sc.set_score(Category.ONES, 3)
+        assert sc.is_filled(Category.ONES) is True
+
+    def test_set_score_records_value(self):
+        sc = Scorecard()
+        sc.set_score(Category.YAHTZEE, 50)
+        assert sc.scores[Category.YAHTZEE] == 50
+
+    def test_set_score_does_not_overwrite_filled(self):
+        sc = Scorecard()
+        sc.set_score(Category.ONES, 3)
+        sc.set_score(Category.ONES, 5)
+        assert sc.scores[Category.ONES] == 3
+
+    def test_zero_score_counts_as_filled(self):
+        sc = Scorecard()
+        sc.set_score(Category.SIXES, 0)
+        assert sc.is_filled(Category.SIXES) is True
+        assert sc.scores[Category.SIXES] == 0
+
+    def test_is_complete_when_all_filled(self):
+        sc = Scorecard()
+        for cat in Category:
+            sc.set_score(cat, 0)
+        assert sc.is_complete() is True
+
+    def test_is_not_complete_when_one_missing(self):
+        sc = Scorecard()
+        for cat in list(Category)[:-1]:
+            sc.set_score(cat, 0)
+        assert sc.is_complete() is False
+
+    def test_copy_is_independent(self):
+        sc = Scorecard()
+        sc.set_score(Category.ONES, 5)
+        copy = sc.copy()
+        copy.set_score(Category.TWOS, 10)
+        assert sc.scores[Category.TWOS] is None
+
+    def test_with_score_returns_new_scorecard(self):
+        sc = Scorecard()
+        sc.set_score(Category.ONES, 5)
+        new = sc.with_score(Category.TWOS, 10)
+        assert new.scores[Category.TWOS] == 10
+        assert sc.scores[Category.TWOS] is None
+
+    def test_with_score_does_not_overwrite_filled(self):
+        sc = Scorecard()
+        sc.set_score(Category.ONES, 3)
+        new = sc.with_score(Category.ONES, 99)
+        assert new.scores[Category.ONES] == 3
+
+
+class TestScorecardTotals:
+
+    def test_upper_section_total(self):
+        sc = Scorecard()
+        sc.set_score(Category.ONES, 3)
+        sc.set_score(Category.TWOS, 6)
+        sc.set_score(Category.THREES, 9)
+        sc.set_score(Category.FOURS, 12)
+        sc.set_score(Category.FIVES, 15)
+        sc.set_score(Category.SIXES, 18)
+        assert sc.get_upper_section_total() == 63
+
+    def test_upper_section_total_ignores_unfilled(self):
+        sc = Scorecard()
+        sc.set_score(Category.ONES, 3)
+        assert sc.get_upper_section_total() == 3
+
+    def test_upper_section_total_ignores_lower_categories(self):
+        sc = Scorecard()
+        sc.set_score(Category.YAHTZEE, 50)
+        assert sc.get_upper_section_total() == 0
+
+    def test_bonus_awarded_at_exactly_63(self):
+        sc = Scorecard()
+        sc.set_score(Category.ONES, 3)
+        sc.set_score(Category.TWOS, 6)
+        sc.set_score(Category.THREES, 9)
+        sc.set_score(Category.FOURS, 12)
+        sc.set_score(Category.FIVES, 15)
+        sc.set_score(Category.SIXES, 18)
+        assert sc.get_upper_section_bonus() == 35
+
+    def test_bonus_awarded_above_63(self):
+        sc = Scorecard()
+        sc.set_score(Category.ONES, 5)
+        sc.set_score(Category.TWOS, 10)
+        sc.set_score(Category.THREES, 15)
+        sc.set_score(Category.FOURS, 20)
+        sc.set_score(Category.FIVES, 25)
+        sc.set_score(Category.SIXES, 30)
+        assert sc.get_upper_section_bonus() == 35
+
+    def test_no_bonus_below_63(self):
+        sc = Scorecard()
+        sc.set_score(Category.ONES, 3)
+        sc.set_score(Category.TWOS, 6)
+        sc.set_score(Category.THREES, 9)
+        sc.set_score(Category.FOURS, 12)
+        sc.set_score(Category.FIVES, 15)
+        sc.set_score(Category.SIXES, 17)  # total = 62
+        assert sc.get_upper_section_bonus() == 0
+
+    def test_no_bonus_when_upper_empty(self):
+        sc = Scorecard()
+        assert sc.get_upper_section_bonus() == 0
+
+    def test_lower_section_total(self):
+        sc = Scorecard()
+        sc.set_score(Category.THREE_OF_KIND, 15)
+        sc.set_score(Category.FOUR_OF_KIND, 22)
+        sc.set_score(Category.FULL_HOUSE, 25)
+        sc.set_score(Category.SMALL_STRAIGHT, 30)
+        sc.set_score(Category.LARGE_STRAIGHT, 40)
+        sc.set_score(Category.YAHTZEE, 50)
+        sc.set_score(Category.CHANCE, 23)
+        assert sc.get_lower_section_total() == 205
+
+    def test_lower_section_total_ignores_upper_categories(self):
+        sc = Scorecard()
+        sc.set_score(Category.ONES, 5)
+        assert sc.get_lower_section_total() == 0
+
+    def test_grand_total_with_bonus(self):
+        sc = Scorecard()
+        sc.set_score(Category.ONES, 3)
+        sc.set_score(Category.TWOS, 6)
+        sc.set_score(Category.THREES, 9)
+        sc.set_score(Category.FOURS, 12)
+        sc.set_score(Category.FIVES, 15)
+        sc.set_score(Category.SIXES, 18)
+        sc.set_score(Category.CHANCE, 20)
+        # upper=63, bonus=35, lower=20 → 118
+        assert sc.get_grand_total() == 118
+
+    def test_grand_total_without_bonus(self):
+        sc = Scorecard()
+        sc.set_score(Category.ONES, 3)
+        sc.set_score(Category.YAHTZEE, 50)
+        # upper=3, bonus=0, lower=50 → 53
+        assert sc.get_grand_total() == 53
+
+    def test_grand_total_all_zeros(self):
+        sc = Scorecard()
+        for cat in Category:
+            sc.set_score(cat, 0)
+        assert sc.get_grand_total() == 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 8. GAME FLOW — full games, round progression, game over
+#    Rule: Game has exactly 13 rounds.
+#    Rule: Each round: roll (1-3 times) → score one category.
+#    Rule: Game ends when all 13 categories are filled.
+#    Rule: After game over, no actions are possible.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestGameFlow:
+
+    def test_complete_game_13_rounds(self):
+        """Play a full game: 13 rounds, each with rolls then scoring."""
+        state = GameState.create_initial()
+        categories = list(Category)
+
+        for round_num in range(1, 14):
+            assert state.current_round == round_num
+            assert state.game_over is False
+
+            state = roll_dice(state)
+            state = select_category(state, categories[round_num - 1])
+
+        assert state.game_over is True
+        assert state.scorecard.is_complete()
+
+    def test_complete_game_using_all_three_rolls_each_turn(self):
+        state = GameState.create_initial()
+        for cat in Category:
+            state = roll_dice(roll_dice(roll_dice(state)))
+            state = select_category(state, cat)
+        assert state.game_over is True
+
+    def test_grand_total_is_non_negative_after_complete_game(self):
+        state = GameState.create_initial()
+        for cat in Category:
+            state = roll_dice(state)
+            state = select_category(state, cat)
+        assert state.scorecard.get_grand_total() >= 0
+
+    def test_game_over_blocks_all_actions(self):
+        """Once game is over, rolling, holding, and scoring all do nothing."""
+        state = GameState.create_initial()
+        for cat in Category:
+            state = roll_dice(state)
+            state = select_category(state, cat)
+        assert state.game_over is True
+        frozen = state
+
+        assert roll_dice(frozen) == frozen
+        assert toggle_die_hold(frozen, 0) == frozen
+        for cat in Category:
+            assert select_category(frozen, cat) == frozen
+
+    def test_turn_cycle_roll_hold_roll_score(self):
+        """Typical turn: roll → hold some → roll again → score."""
+        state = GameState.create_initial()
+
+        state = roll_dice(state)
+        state = toggle_die_hold(state, 0)
+        state = toggle_die_hold(state, 1)
+        state = roll_dice(state)
+        state = select_category(state, Category.CHANCE)
+
+        assert state.current_round == 2
+        assert state.rolls_used == 0
+        assert all(not d.held for d in state.dice)
+
+    def test_turn_cycle_single_roll_then_score(self):
+        """Minimal turn: one roll, then score immediately."""
+        state = GameState.create_initial()
+        state = roll_dice(state)
+        state = select_category(state, Category.CHANCE)
+
+        assert state.current_round == 2
+        assert state.rolls_used == 0
+
+    def test_consecutive_turns_are_independent(self):
+        """Each turn starts fresh: rolls_used=0, no holds, regardless of prior turn."""
+        state = GameState.create_initial()
+
+        # Turn 1: use all 3 rolls, hold dice
+        state = roll_dice(state)
+        state = toggle_die_hold(state, 0)
+        state = toggle_die_hold(state, 3)
         state = roll_dice(state)
         state = roll_dice(state)
         assert state.rolls_used == 3
+        state = select_category(state, Category.ONES)
 
-        # Select first available category
-        for cat in Category:
-            if not state.scorecard.is_filled(cat):
-                state = select_category(state, cat)
-                break
+        # Turn 2: clean slate
+        assert state.rolls_used == 0
+        assert all(not d.held for d in state.dice)
 
-    # Game should be over
-    assert state.game_over == True
-    assert state.scorecard.is_complete()
+        # Cannot hold or score yet
+        assert toggle_die_hold(state, 0) == state
+        assert select_category(state, Category.TWOS) == state
 
-    # Grand total should be calculated
-    total = state.scorecard.get_grand_total()
-    assert total >= 0  # Valid score
+        # Roll works, then hold and score work
+        state = roll_dice(state)
+        state = toggle_die_hold(state, 1)
+        assert state.dice[1].held is True
+        state = select_category(state, Category.TWOS)
+        assert state.current_round == 3
 
+    def test_categories_can_be_filled_in_any_order(self):
+        """No restriction on which category to fill first."""
+        state = GameState.create_initial()
+        reversed_cats = list(reversed(list(Category)))
 
-def test_held_dice_across_rolls():
-    """Test that holding dice persists across multiple rolls"""
-    state = GameState.create_initial()
+        for cat in reversed_cats:
+            state = roll_dice(state)
+            state = select_category(state, cat)
 
-    # Must roll first before holding
-    state = roll_dice(state)
+        assert state.game_over is True
+        assert state.scorecard.is_complete()
 
-    # Hold dice 0 and 2
-    state = toggle_die_hold(state, 0)
-    state = toggle_die_hold(state, 2)
-
-    original_val_0 = state.dice[0].value
-    original_val_2 = state.dice[2].value
-
-    # Roll remaining times (already used 1 roll)
-    state = roll_dice(state)
-    assert state.dice[0].value == original_val_0
-    assert state.dice[2].value == original_val_2
-
-    state = roll_dice(state)
-    assert state.dice[0].value == original_val_0
-    assert state.dice[2].value == original_val_2
-
-
-def test_scorecard_copy():
-    """Test that scorecard copy works correctly"""
-    original = Scorecard()
-    original.set_score(Category.ONES, 5)
-
-    copy = original.copy()
-    copy.set_score(Category.TWOS, 10)
-
-    # Original should not be affected
-    assert original.scores[Category.TWOS] is None
-    assert copy.scores[Category.ONES] == 5
-    assert copy.scores[Category.TWOS] == 10
-
-
-def test_scorecard_with_score():
-    """Test that with_score returns new scorecard"""
-    original = Scorecard()
-    original.set_score(Category.ONES, 5)
-
-    new = original.with_score(Category.TWOS, 10)
-
-    # New scorecard has both scores
-    assert new.scores[Category.ONES] == 5
-    assert new.scores[Category.TWOS] == 10
-
-    # Original only has first score
-    assert original.scores[Category.ONES] == 5
-    assert original.scores[Category.TWOS] is None
-
-
-# Test Illegal Action Prevention
-
-def test_cannot_score_without_rolling():
-    """Test that selecting a category without rolling first is rejected"""
-    state = GameState.create_initial()
-    assert state.rolls_used == 0
-
-    # Try to score without rolling - should be rejected
-    state_after = select_category(state, Category.CHANCE)
-    assert state_after == state  # State unchanged
-    assert not state_after.scorecard.is_filled(Category.CHANCE)
-    assert state_after.current_round == 1
-
-
-def test_can_select_category_requires_roll():
-    """Test that can_select_category returns False when no roll has been made"""
-    state = GameState.create_initial()
-    assert can_select_category(state, Category.ONES) == False
-
-    # After rolling, it should be allowed
-    state = roll_dice(state)
-    assert can_select_category(state, Category.ONES) == True
-
-
-def test_cannot_hold_dice_before_rolling():
-    """Test that toggling die hold before rolling is rejected"""
-    state = GameState.create_initial()
-    assert state.rolls_used == 0
-
-    # Try to hold a die without rolling first - should be rejected
-    state_after = toggle_die_hold(state, 0)
-    assert state_after == state  # State unchanged
-    assert state_after.dice[0].held == False
-
-
-def test_cannot_hold_dice_at_start_of_new_turn():
-    """Test that dice can't be held at the start of a new turn (after scoring resets rolls_used)"""
-    state = GameState.create_initial()
-    state = roll_dice(state)
-    state = select_category(state, Category.ONES)
-
-    # New turn - rolls_used is 0 again
-    assert state.rolls_used == 0
-
-    # Try to hold a die - should be rejected since we haven't rolled this turn
-    state_after = toggle_die_hold(state, 0)
-    assert state_after == state
-
-
-def test_score_without_rolling_does_not_advance_round():
-    """Test that failed scoring attempt doesn't advance the round"""
-    state = GameState.create_initial()
-    assert state.current_round == 1
-
-    # Attempt to score every category without rolling
-    for cat in Category:
-        state = select_category(state, cat)
-
-    # Nothing should have changed
-    assert state.current_round == 1
-    assert state.rolls_used == 0
-    assert not state.scorecard.is_complete()
-
-
-def test_can_score_after_one_roll():
-    """Test that scoring is allowed after just one roll (don't need all 3)"""
-    state = GameState.create_initial()
-    state = roll_dice(state)
-    assert state.rolls_used == 1
-
-    # Should be able to score after just 1 roll
-    state = select_category(state, Category.CHANCE)
-    assert state.scorecard.is_filled(Category.CHANCE)
-    assert state.current_round == 2
-
-
-def test_can_score_after_three_rolls():
-    """Test that scoring is allowed after all 3 rolls"""
-    state = GameState.create_initial()
-    state = roll_dice(state)
-    state = roll_dice(state)
-    state = roll_dice(state)
-    assert state.rolls_used == 3
-
-    state = select_category(state, Category.CHANCE)
-    assert state.scorecard.is_filled(Category.CHANCE)
-
-
-def test_hold_after_roll_then_score_resets_properly():
-    """Test full turn cycle: roll, hold, roll, score, then new turn starts clean"""
-    state = GameState.create_initial()
-
-    # Turn 1: roll, hold, roll again, score
-    state = roll_dice(state)
-    state = toggle_die_hold(state, 0)
-    assert state.dice[0].held == True
-    state = roll_dice(state)
-    state = select_category(state, Category.ONES)
-
-    # Turn 2 should start with clean state
-    assert state.rolls_used == 0
-    assert state.dice[0].held == False
-    assert state.current_round == 2
-
-    # Can't hold or score yet
-    assert toggle_die_hold(state, 0) == state
-    assert select_category(state, Category.TWOS) == state
-
-    # But can roll, then hold, then score
-    state = roll_dice(state)
-    state = toggle_die_hold(state, 1)
-    assert state.dice[1].held == True
-    state = select_category(state, Category.TWOS)
-    assert state.current_round == 3
+    def test_exactly_13_categories_exist(self):
+        assert len(list(Category)) == 13
