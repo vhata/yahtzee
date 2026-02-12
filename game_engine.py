@@ -421,3 +421,147 @@ def reset_game() -> GameState:
         New GameState with initial values
     """
     return GameState.create_initial()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Multiplayer Game State and Functions
+# ══════════════════════════════════════════════════════════════════════════════
+
+@dataclass(frozen=True)
+class MultiplayerGameState:
+    """Immutable multiplayer game state — wraps multiple scorecards and turn management.
+
+    Reuses existing single-player engine functions internally to avoid logic duplication.
+    """
+    num_players: int
+    scorecards: Tuple[Scorecard, ...]  # one per player
+    current_player_index: int
+    dice: Tuple[DieState, ...]
+    rolls_used: int
+    current_round: int       # 1-13, advances when all players complete a turn
+    game_over: bool = False
+
+    @staticmethod
+    def create_initial(num_players: int) -> 'MultiplayerGameState':
+        """Create a fresh multiplayer game state.
+
+        Args:
+            num_players: Number of players (2-4)
+
+        Returns:
+            New MultiplayerGameState with initial values
+        """
+        dice = tuple(DieState(value=random.randint(1, 6), held=False) for _ in range(5))
+        scorecards = tuple(Scorecard() for _ in range(num_players))
+        return MultiplayerGameState(
+            num_players=num_players,
+            scorecards=scorecards,
+            current_player_index=0,
+            dice=dice,
+            rolls_used=0,
+            current_round=1,
+            game_over=False
+        )
+
+
+def _mp_temp_game_state(state: MultiplayerGameState) -> GameState:
+    """Build a temporary single-player GameState from the current multiplayer state.
+
+    Used to delegate dice operations to existing engine functions.
+    """
+    return GameState(
+        dice=state.dice,
+        scorecard=state.scorecards[state.current_player_index],
+        rolls_used=state.rolls_used,
+        current_round=state.current_round,
+        game_over=state.game_over,
+    )
+
+
+def mp_roll_dice(state: MultiplayerGameState) -> MultiplayerGameState:
+    """Roll all unheld dice. Delegates to single-player roll_dice().
+
+    Returns state unchanged if rolls_used >= 3 or game_over.
+    """
+    if state.rolls_used >= 3 or state.game_over:
+        return state
+
+    temp = _mp_temp_game_state(state)
+    new_temp = roll_dice(temp)
+    return replace(state, dice=new_temp.dice, rolls_used=new_temp.rolls_used)
+
+
+def mp_toggle_die_hold(state: MultiplayerGameState, die_index: int) -> MultiplayerGameState:
+    """Toggle hold status of a die. Delegates to single-player toggle_die_hold().
+
+    Returns state unchanged if invalid index, game_over, or rolls_used == 0.
+    """
+    if not (0 <= die_index < 5) or state.game_over or state.rolls_used == 0:
+        return state
+
+    temp = _mp_temp_game_state(state)
+    new_temp = toggle_die_hold(temp, die_index)
+    return replace(state, dice=new_temp.dice)
+
+
+def mp_select_category(state: MultiplayerGameState, category: Category) -> MultiplayerGameState:
+    """Score a category for the current player and advance to the next turn.
+
+    1. Validates: not game_over, rolls_used > 0, category not filled
+    2. Calculates score, updates current player's scorecard
+    3. Advances to next player; if wrapped to player 0, increments round
+    4. If all scorecards complete, sets game_over
+    5. Otherwise resets dice holds and rolls_used for next player
+    """
+    current_scorecard = state.scorecards[state.current_player_index]
+    if state.game_over or state.rolls_used == 0 or current_scorecard.is_filled(category):
+        return state
+
+    # Calculate and apply score
+    score = calculate_score(category, state.dice)
+    new_scorecard = current_scorecard.with_score(category, score)
+
+    # Update scorecards tuple
+    scorecards_list = list(state.scorecards)
+    scorecards_list[state.current_player_index] = new_scorecard
+    new_scorecards = tuple(scorecards_list)
+
+    # Advance to next player
+    next_player = (state.current_player_index + 1) % state.num_players
+    next_round = state.current_round
+    if next_player == 0:
+        next_round += 1
+
+    # Check if all scorecards are complete
+    all_complete = all(sc.is_complete() for sc in new_scorecards)
+
+    if all_complete:
+        return replace(state,
+                       scorecards=new_scorecards,
+                       game_over=True)
+
+    # Reset dice for next player's turn
+    new_dice = tuple(replace(die, held=False) for die in state.dice)
+    return replace(state,
+                   scorecards=new_scorecards,
+                   current_player_index=next_player,
+                   dice=new_dice,
+                   rolls_used=0,
+                   current_round=next_round)
+
+
+def mp_can_roll(state: MultiplayerGameState) -> bool:
+    """Check if the current player can roll dice."""
+    return not state.game_over and state.rolls_used < 3
+
+
+def mp_can_select_category(state: MultiplayerGameState, category: Category) -> bool:
+    """Check if the current player can score in the given category."""
+    if state.game_over or state.rolls_used == 0:
+        return False
+    return not state.scorecards[state.current_player_index].is_filled(category)
+
+
+def mp_get_current_scorecard(state: MultiplayerGameState) -> Scorecard:
+    """Return the current player's scorecard."""
+    return state.scorecards[state.current_player_index]

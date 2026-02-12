@@ -25,6 +25,9 @@ from game_engine import (
     can_roll, can_select_category, reset_game,
     calculate_score, has_yahtzee, has_full_house,
     has_small_straight, has_large_straight, has_n_of_kind,
+    MultiplayerGameState,
+    mp_roll_dice, mp_toggle_die_hold, mp_select_category,
+    mp_can_roll, mp_can_select_category, mp_get_current_scorecard,
 )
 
 
@@ -1000,3 +1003,390 @@ class TestGameFlow:
 
     def test_exactly_13_categories_exist(self):
         assert len(list(Category)) == 13
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 9. MULTIPLAYER
+#    Rule: 2-4 players take turns on independent scorecards.
+#    Rule: Turn order rotates: player 0 → 1 → ... → N-1 → 0.
+#    Rule: Round advances each time play wraps back to player 0.
+#    Rule: Game ends only when ALL players' scorecards are complete.
+#    Rule: Dice rolls/holds reset between turns (same as single-player).
+#    Rule: mp_* functions delegate to single-player logic where possible.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def mp_state_with_dice(*values, rolls_used=1, num_players=2):
+    """Create a MultiplayerGameState with specific dice values."""
+    state = MultiplayerGameState.create_initial(num_players)
+    return replace(state, dice=make_dice(*values), rolls_used=rolls_used)
+
+
+class TestMultiplayerSetup:
+
+    def test_create_2_players(self):
+        state = MultiplayerGameState.create_initial(2)
+        assert state.num_players == 2
+        assert len(state.scorecards) == 2
+
+    def test_create_3_players(self):
+        state = MultiplayerGameState.create_initial(3)
+        assert state.num_players == 3
+        assert len(state.scorecards) == 3
+
+    def test_create_4_players(self):
+        state = MultiplayerGameState.create_initial(4)
+        assert state.num_players == 4
+        assert len(state.scorecards) == 4
+
+    def test_initial_state_has_five_dice(self):
+        state = MultiplayerGameState.create_initial(2)
+        assert len(state.dice) == 5
+
+    def test_initial_dice_values_1_through_6(self):
+        state = MultiplayerGameState.create_initial(2)
+        for die in state.dice:
+            assert 1 <= die.value <= 6
+
+    def test_initial_dice_all_unheld(self):
+        state = MultiplayerGameState.create_initial(2)
+        for die in state.dice:
+            assert die.held is False
+
+    def test_initial_current_player_is_zero(self):
+        state = MultiplayerGameState.create_initial(3)
+        assert state.current_player_index == 0
+
+    def test_initial_rolls_used_is_zero(self):
+        state = MultiplayerGameState.create_initial(2)
+        assert state.rolls_used == 0
+
+    def test_initial_round_is_one(self):
+        state = MultiplayerGameState.create_initial(2)
+        assert state.current_round == 1
+
+    def test_initial_game_not_over(self):
+        state = MultiplayerGameState.create_initial(2)
+        assert state.game_over is False
+
+    def test_initial_all_scorecards_empty(self):
+        state = MultiplayerGameState.create_initial(3)
+        for sc in state.scorecards:
+            for cat in Category:
+                assert not sc.is_filled(cat)
+
+    def test_scorecards_are_independent_objects(self):
+        state = MultiplayerGameState.create_initial(2)
+        assert state.scorecards[0] is not state.scorecards[1]
+
+
+class TestMultiplayerTurnRotation:
+
+    def test_scoring_advances_to_next_player(self):
+        state = mp_state_with_dice(1, 2, 3, 4, 5, num_players=3)
+        state = mp_select_category(state, Category.CHANCE)
+        assert state.current_player_index == 1
+
+    def test_scoring_wraps_around_to_player_zero(self):
+        state = mp_state_with_dice(1, 2, 3, 4, 5, num_players=2)
+        state = mp_select_category(state, Category.ONES)
+        assert state.current_player_index == 1
+
+        # Player 1 rolls and scores
+        state = mp_roll_dice(state)
+        state = mp_select_category(state, Category.TWOS)
+        assert state.current_player_index == 0
+
+    def test_three_player_rotation(self):
+        """Full rotation: 0 → 1 → 2 → 0"""
+        state = mp_state_with_dice(1, 2, 3, 4, 5, num_players=3)
+
+        # Player 0 scores
+        state = mp_select_category(state, Category.ONES)
+        assert state.current_player_index == 1
+
+        # Player 1 scores
+        state = mp_roll_dice(state)
+        state = mp_select_category(state, Category.TWOS)
+        assert state.current_player_index == 2
+
+        # Player 2 scores
+        state = mp_roll_dice(state)
+        state = mp_select_category(state, Category.THREES)
+        assert state.current_player_index == 0
+
+
+class TestMultiplayerRoundAdvancement:
+
+    def test_round_advances_when_wrapping_to_player_zero(self):
+        state = mp_state_with_dice(1, 2, 3, 4, 5, num_players=2)
+        assert state.current_round == 1
+
+        # Player 0 scores
+        state = mp_select_category(state, Category.ONES)
+        assert state.current_round == 1  # still round 1
+
+        # Player 1 scores — wraps to player 0, round increments
+        state = mp_roll_dice(state)
+        state = mp_select_category(state, Category.TWOS)
+        assert state.current_round == 2
+
+    def test_round_does_not_advance_mid_rotation(self):
+        state = mp_state_with_dice(1, 2, 3, 4, 5, num_players=3)
+
+        # Player 0 scores
+        state = mp_select_category(state, Category.ONES)
+        assert state.current_round == 1
+
+        # Player 1 scores — not yet wrapped
+        state = mp_roll_dice(state)
+        state = mp_select_category(state, Category.TWOS)
+        assert state.current_round == 1
+
+        # Player 2 scores — wraps to 0, round increments
+        state = mp_roll_dice(state)
+        state = mp_select_category(state, Category.THREES)
+        assert state.current_round == 2
+
+
+class TestMultiplayerIndependentScorecards:
+
+    def test_scoring_only_affects_current_player(self):
+        state = mp_state_with_dice(3, 3, 3, 1, 2, num_players=2)
+        state = mp_select_category(state, Category.THREES)
+
+        # Player 0's scorecard was updated
+        assert state.scorecards[0].is_filled(Category.THREES)
+        assert state.scorecards[0].scores[Category.THREES] == 9
+
+        # Player 1's scorecard is untouched
+        assert not state.scorecards[1].is_filled(Category.THREES)
+
+    def test_both_players_can_fill_same_category(self):
+        state = mp_state_with_dice(5, 5, 5, 5, 5, num_players=2)
+
+        # Player 0 fills Yahtzee
+        state = mp_select_category(state, Category.YAHTZEE)
+        assert state.scorecards[0].is_filled(Category.YAHTZEE)
+        assert state.scorecards[0].scores[Category.YAHTZEE] == 50
+
+        # Player 1 fills Yahtzee too
+        state = mp_roll_dice(state)
+        state = mp_select_category(state, Category.YAHTZEE)
+        assert state.scorecards[1].is_filled(Category.YAHTZEE)
+
+    def test_get_current_scorecard_returns_correct_player(self):
+        state = mp_state_with_dice(1, 2, 3, 4, 5, num_players=2)
+        assert mp_get_current_scorecard(state) is state.scorecards[0]
+
+        state = mp_select_category(state, Category.ONES)
+        assert mp_get_current_scorecard(state) is state.scorecards[1]
+
+
+class TestMultiplayerDiceReset:
+
+    def test_dice_unheld_after_scoring(self):
+        state = mp_state_with_dice(1, 2, 3, 4, 5, num_players=2)
+        state = mp_toggle_die_hold(state, 0)
+        state = mp_toggle_die_hold(state, 2)
+        assert state.dice[0].held is True
+
+        state = mp_select_category(state, Category.CHANCE)
+        for die in state.dice:
+            assert die.held is False
+
+    def test_rolls_used_reset_after_scoring(self):
+        state = mp_state_with_dice(1, 2, 3, 4, 5, num_players=2)
+        assert state.rolls_used == 1
+        state = mp_select_category(state, Category.CHANCE)
+        assert state.rolls_used == 0
+
+
+class TestMultiplayerRolling:
+
+    def test_mp_roll_dice_increments_rolls_used(self):
+        state = MultiplayerGameState.create_initial(2)
+        state = mp_roll_dice(state)
+        assert state.rolls_used == 1
+
+    def test_mp_roll_dice_changes_unheld_dice(self):
+        random.seed(42)
+        state = MultiplayerGameState.create_initial(2)
+        state = mp_roll_dice(state)
+        # After roll, values should be 1-6 (we just check it ran)
+        for die in state.dice:
+            assert 1 <= die.value <= 6
+
+    def test_mp_roll_dice_preserves_held_dice(self):
+        state = mp_state_with_dice(6, 6, 6, 1, 2, num_players=2)
+        state = mp_toggle_die_hold(state, 0)
+        state = mp_roll_dice(state)
+        assert state.dice[0].value == 6
+        assert state.dice[0].held is True
+
+    def test_mp_roll_dice_no_op_after_3_rolls(self):
+        state = MultiplayerGameState.create_initial(2)
+        state = mp_roll_dice(mp_roll_dice(mp_roll_dice(state)))
+        assert state.rolls_used == 3
+        before = state
+        after = mp_roll_dice(state)
+        assert after.rolls_used == 3
+        assert after.dice == before.dice
+
+    def test_mp_roll_dice_no_op_when_game_over(self):
+        state = replace(MultiplayerGameState.create_initial(2), game_over=True)
+        after = mp_roll_dice(state)
+        assert after == state
+
+    def test_mp_can_roll_true_at_start(self):
+        state = MultiplayerGameState.create_initial(2)
+        assert mp_can_roll(state) is True
+
+    def test_mp_can_roll_false_after_3(self):
+        state = mp_roll_dice(mp_roll_dice(mp_roll_dice(
+            MultiplayerGameState.create_initial(2))))
+        assert mp_can_roll(state) is False
+
+    def test_mp_can_roll_false_when_game_over(self):
+        state = replace(MultiplayerGameState.create_initial(2), game_over=True)
+        assert mp_can_roll(state) is False
+
+
+class TestMultiplayerHolding:
+
+    def test_mp_toggle_die_hold_works_after_roll(self):
+        state = mp_roll_dice(MultiplayerGameState.create_initial(2))
+        state = mp_toggle_die_hold(state, 0)
+        assert state.dice[0].held is True
+
+    def test_mp_toggle_die_hold_no_op_before_roll(self):
+        state = MultiplayerGameState.create_initial(2)
+        after = mp_toggle_die_hold(state, 0)
+        assert after == state
+
+    def test_mp_toggle_die_hold_no_op_when_game_over(self):
+        state = replace(mp_roll_dice(MultiplayerGameState.create_initial(2)),
+                        game_over=True)
+        after = mp_toggle_die_hold(state, 0)
+        assert after == state
+
+    def test_mp_toggle_die_hold_no_op_invalid_index(self):
+        state = mp_roll_dice(MultiplayerGameState.create_initial(2))
+        assert mp_toggle_die_hold(state, -1) == state
+        assert mp_toggle_die_hold(state, 5) == state
+
+
+class TestMultiplayerScoring:
+
+    def test_cannot_score_without_rolling(self):
+        state = MultiplayerGameState.create_initial(2)
+        for cat in Category:
+            assert mp_can_select_category(state, cat) is False
+            assert mp_select_category(state, cat) == state
+
+    def test_cannot_score_filled_category(self):
+        state = mp_state_with_dice(1, 2, 3, 4, 5, num_players=2)
+        state = mp_select_category(state, Category.ONES)
+
+        # Player 1 scores something else
+        state = mp_roll_dice(state)
+        state = mp_select_category(state, Category.TWOS)
+
+        # Back to player 0 — ONES is already filled
+        state = mp_roll_dice(state)
+        assert mp_can_select_category(state, Category.ONES) is False
+        round_before = state.current_round
+        after = mp_select_category(state, Category.ONES)
+        assert after.current_round == round_before
+
+    def test_cannot_score_when_game_over(self):
+        state = replace(
+            mp_state_with_dice(1, 2, 3, 4, 5, num_players=2),
+            game_over=True
+        )
+        for cat in Category:
+            assert mp_can_select_category(state, cat) is False
+            assert mp_select_category(state, cat) == state
+
+    def test_can_select_any_unfilled_category(self):
+        state = mp_state_with_dice(1, 2, 3, 4, 5, num_players=2)
+        for cat in Category:
+            assert mp_can_select_category(state, cat) is True
+
+
+class TestMultiplayerGameOver:
+
+    def test_game_over_when_all_scorecards_complete(self):
+        """Play a full 2-player game — 26 turns total."""
+        state = MultiplayerGameState.create_initial(2)
+        categories = list(Category)
+
+        for round_idx in range(13):
+            # Player 0's turn
+            state = mp_roll_dice(state)
+            state = mp_select_category(state, categories[round_idx])
+
+            # Player 1's turn
+            state = mp_roll_dice(state)
+            state = mp_select_category(state, categories[round_idx])
+
+        assert state.game_over is True
+        assert all(sc.is_complete() for sc in state.scorecards)
+
+    def test_game_not_over_if_one_player_incomplete(self):
+        """If player 0 has filled all categories but player 1 hasn't, game continues."""
+        state = MultiplayerGameState.create_initial(2)
+        categories = list(Category)
+
+        for round_idx in range(12):
+            # Player 0 scores
+            state = mp_roll_dice(state)
+            state = mp_select_category(state, categories[round_idx])
+            # Player 1 scores
+            state = mp_roll_dice(state)
+            state = mp_select_category(state, categories[round_idx])
+
+        # Round 13: player 0 scores last category
+        state = mp_roll_dice(state)
+        state = mp_select_category(state, categories[12])
+        # Player 0's scorecard is now complete, but player 1 still needs one
+        assert state.scorecards[0].is_complete()
+        assert not state.scorecards[1].is_complete()
+        assert state.game_over is False
+
+        # Player 1 scores last category — now game over
+        state = mp_roll_dice(state)
+        state = mp_select_category(state, categories[12])
+        assert state.game_over is True
+
+    def test_game_over_blocks_all_actions(self):
+        state = MultiplayerGameState.create_initial(2)
+        categories = list(Category)
+        for round_idx in range(13):
+            state = mp_roll_dice(state)
+            state = mp_select_category(state, categories[round_idx])
+            state = mp_roll_dice(state)
+            state = mp_select_category(state, categories[round_idx])
+
+        assert state.game_over is True
+        frozen = state
+        assert mp_roll_dice(frozen) == frozen
+        assert mp_toggle_die_hold(frozen, 0) == frozen
+        for cat in Category:
+            assert mp_select_category(frozen, cat) == frozen
+
+
+class TestMultiplayerFullGame3Players:
+
+    def test_3_player_complete_game(self):
+        """Play a full 3-player game — 39 turns total."""
+        state = MultiplayerGameState.create_initial(3)
+        categories = list(Category)
+
+        for round_idx in range(13):
+            for _ in range(3):  # 3 players
+                state = mp_roll_dice(state)
+                state = mp_select_category(state, categories[round_idx])
+
+        assert state.game_over is True
+        assert all(sc.is_complete() for sc in state.scorecards)
