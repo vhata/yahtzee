@@ -733,3 +733,98 @@ class TestCLIParsing:
         """--speed fast sets speed."""
         args = parse_args(["--speed", "fast"])
         assert args.speed == "fast"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 9. SMOKE RENDERING TESTS
+#    Verify that YahtzeeGame.draw() doesn't crash in headless pygame.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import os
+import pygame
+
+
+@pytest.fixture(scope="module", autouse=False)
+def headless_pygame():
+    """Set up headless pygame for rendering tests."""
+    os.environ["SDL_VIDEODRIVER"] = "dummy"
+    os.environ["SDL_AUDIODRIVER"] = "dummy"
+    pygame.init()
+    pygame.display.set_mode((1, 1))
+    yield
+    pygame.quit()
+
+
+class TestSmokeRendering:
+    """Verify draw() doesn't crash in headless mode across all game states."""
+
+    def _make_game(self, headless_pygame, **kwargs):
+        """Create a YahtzeeGame instance in headless mode."""
+        from main import YahtzeeGame
+        return YahtzeeGame(**kwargs)
+
+    def test_draw_single_player_initial(self, headless_pygame):
+        """Single-player initial state renders without error."""
+        game = self._make_game(headless_pygame)
+        game.draw()
+
+    def test_draw_single_player_ai(self, headless_pygame):
+        """AI single-player renders without error."""
+        game = self._make_game(headless_pygame, ai_strategy=GreedyStrategy())
+        game.draw()
+
+    def test_draw_multiplayer(self, headless_pygame):
+        """Multiplayer renders without error (including turn transition)."""
+        players = [("P1", None), ("P2", GreedyStrategy())]
+        game = self._make_game(headless_pygame, players=players)
+        # Initial state has turn_transition=True
+        game.draw()
+
+    def test_draw_multiplayer_after_transition(self, headless_pygame):
+        """Multiplayer renders after turn transition clears."""
+        random.seed(42)
+        players = [("P1", None), ("P2", None)]
+        game = self._make_game(headless_pygame, players=players, speed="fast")
+        # Clear transition
+        for _ in range(45):
+            game.update()
+        game.draw()
+
+    def test_draw_game_over_single(self, headless_pygame):
+        """Single-player game over screen renders without error."""
+        random.seed(42)
+        game = self._make_game(headless_pygame, ai_strategy=GreedyStrategy(), speed="fast")
+        # Play to completion
+        while not game.coordinator.game_over:
+            game.update()
+        game.draw()
+
+    def test_draw_game_over_multiplayer_2p(self, headless_pygame):
+        """2-player multiplayer game over renders without error."""
+        random.seed(42)
+        players = [("P1", GreedyStrategy()), ("P2", RandomStrategy())]
+        game = self._make_game(headless_pygame, players=players, speed="fast")
+        while not game.coordinator.game_over:
+            game.update()
+        game.draw()
+
+    def test_draw_game_over_multiplayer_3p(self, headless_pygame):
+        """3-player multiplayer game over renders without error."""
+        random.seed(42)
+        players = [("P1", GreedyStrategy()), ("P2", RandomStrategy()), ("P3", GreedyStrategy())]
+        game = self._make_game(headless_pygame, players=players, speed="fast")
+        while not game.coordinator.game_over:
+            game.update()
+        game.draw()
+
+    def test_draw_game_over_multiplayer_4p(self, headless_pygame):
+        """4-player multiplayer game over renders without error."""
+        random.seed(42)
+        players = [
+            ("P1", GreedyStrategy()), ("P2", RandomStrategy()),
+            ("P3", GreedyStrategy()), ("P4", RandomStrategy()),
+        ]
+        game = self._make_game(headless_pygame, players=players, speed="fast")
+        while not game.coordinator.game_over:
+            game.update()
+        game.draw()

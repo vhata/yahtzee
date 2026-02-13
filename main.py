@@ -1,28 +1,17 @@
 #!/usr/bin/env python3
 """
 Yahtzee Game - A graphical implementation using pygame
+
+Thin rendering shell that delegates all game coordination to GameCoordinator.
 """
-import argparse
 import pygame
 import sys
 import random
 import math
 from game_engine import (
-    Category, Scorecard, calculate_score,
-    GameState, DieState,
-    roll_dice as engine_roll_dice,
-    toggle_die_hold as engine_toggle_die,
-    select_category as engine_select_category,
-    can_roll, can_select_category,
-    reset_game as engine_reset_game,
-    MultiplayerGameState,
-    mp_roll_dice, mp_toggle_die_hold, mp_select_category,
-    mp_can_roll, mp_can_select_category, mp_get_current_scorecard,
+    Category, calculate_score, DieState,
 )
-from ai import (
-    RollAction, ScoreAction,
-    RandomStrategy, GreedyStrategy, ExpectedValueStrategy,
-)
+from game_coordinator import GameCoordinator, parse_args, _make_strategy
 
 # Initialize pygame
 pygame.init()
@@ -62,14 +51,6 @@ DOT_RADIUS = 6
 
 # Game constants
 MAX_ROLLS_PER_TURN = 3
-
-# Speed presets for AI playback: (ai_delay, roll_duration, hold_show_duration) in frames
-SPEED_PRESETS = {
-    "slow":   (60, 90, 30),
-    "normal": (30, 60, 20),
-    "fast":   (10, 20, 8),
-}
-SPEED_NAMES = ["slow", "normal", "fast"]
 
 
 class DiceSprite:
@@ -268,7 +249,7 @@ class Button:
 
 
 class YahtzeeGame:
-    """Main game class for Yahtzee"""
+    """Main game class for Yahtzee — thin rendering shell over GameCoordinator"""
 
     def __init__(self, ai_strategy=None, speed="normal", players=None):
         """Initialize the game window and basic components
@@ -285,33 +266,10 @@ class YahtzeeGame:
         self.clock = pygame.time.Clock()
         self.running = True
 
-        # Multiplayer mode
-        self.multiplayer = players is not None
-        if self.multiplayer:
-            self.player_configs = players  # list of (name, strategy_or_None)
-            self.mp_state = MultiplayerGameState.create_initial(len(players))
-            # Synthetic single-player state not used; use mp_state instead
-            self.state = None
-            # Turn transition overlay
-            self.turn_transition = True  # Show initial "Player 1's turn!" overlay
-            self.turn_transition_timer = 0
-            self.turn_transition_duration = 45  # frames (~0.75 sec)
-        else:
-            self.player_configs = None
-            self.mp_state = None
-            # Game state (from engine) — single-player path
-            self.state = GameState.create_initial()
-            self.turn_transition = False
-
-        # AI state (shared by both modes)
-        self.ai_strategy = ai_strategy  # single-player only
-        self.ai_timer = 0
-        self.speed_name = speed
-        self.ai_delay, self.roll_duration, self.ai_hold_show_duration = SPEED_PRESETS[self.speed_name]
-        self.ai_needs_first_roll = True  # AI needs to roll at start of each turn
-        self.ai_reason = ""  # Latest AI reasoning explanation
-        self.ai_showing_holds = False  # Pause to show AI's held dice before rolling
-        self.ai_hold_timer = 0
+        # All game coordination logic lives in the coordinator
+        self.coordinator = GameCoordinator(
+            ai_strategy=ai_strategy, speed=speed, players=players
+        )
 
         # Dice sprites (visual representation only)
         self.dice_sprites = []
@@ -338,98 +296,18 @@ class YahtzeeGame:
         play_again_y = 550
         self.play_again_button = Button(play_again_x, play_again_y, play_again_width, play_again_height, "PLAY AGAIN", 40)
 
-        # Animation state (GUI concern only)
-        self.is_rolling = False
-        self.roll_timer = 0
-        initial_dice = self.mp_state.dice if self.multiplayer else self.state.dice
-        self.animation_dice_values = [die.value for die in initial_dice]
-        self.final_values = []
-        self._pending_state = None  # State to commit after animation
-        self._pending_mp_state = None  # Multiplayer state to commit after animation
+        # Animation state (GUI concern only — randomized display values during roll)
+        self.animation_dice_values = [die.value for die in self.coordinator.dice]
 
         # UI state
         self.category_rects = {}  # Maps Category to pygame.Rect for click detection
         self.hovered_category = None
 
-    def reset_game(self):
-        """Reset the game to start a new game"""
-        if self.multiplayer:
-            self.mp_state = MultiplayerGameState.create_initial(len(self.player_configs))
-            self.animation_dice_values = [die.value for die in self.mp_state.dice]
-            self.turn_transition = True
-            self.turn_transition_timer = 0
-        else:
-            self.state = engine_reset_game()
-            self.animation_dice_values = [die.value for die in self.state.dice]
-        self.ai_needs_first_roll = True
-        self.ai_timer = 0
-        self.ai_reason = ""
-        self.ai_showing_holds = False
-        self.ai_hold_timer = 0
-
-    def roll_dice(self):
-        """Start the dice rolling animation"""
-        if self.multiplayer:
-            if not self.is_rolling and mp_can_roll(self.mp_state):
-                self.is_rolling = True
-                self.roll_timer = 0
-                new_mp_state = mp_roll_dice(self.mp_state)
-                self.final_values = [die.value for die in new_mp_state.dice]
-                self._pending_mp_state = new_mp_state
-        else:
-            if not self.is_rolling and can_roll(self.state):
-                self.is_rolling = True
-                self.roll_timer = 0
-                new_state = engine_roll_dice(self.state)
-                self.final_values = [die.value for die in new_state.dice]
-                self._pending_state = new_state
-
-    def _get_dice(self):
-        """Get current dice tuple from the active game state."""
-        return self.mp_state.dice if self.multiplayer else self.state.dice
-
-    def _get_rolls_used(self):
-        """Get current rolls_used from the active game state."""
-        return self.mp_state.rolls_used if self.multiplayer else self.state.rolls_used
-
-    def _is_game_over(self):
-        """Check if the game is over."""
-        return self.mp_state.game_over if self.multiplayer else self.state.game_over
-
-    def _get_current_round(self):
-        """Get the current round number."""
-        return self.mp_state.current_round if self.multiplayer else self.state.current_round
-
-    def _get_scorecard(self):
-        """Get the current player's scorecard."""
-        if self.multiplayer:
-            return mp_get_current_scorecard(self.mp_state)
-        return self.state.scorecard
-
-    def _is_current_player_human(self):
-        """In multiplayer, check if the current player is human."""
-        if not self.multiplayer:
-            return self.ai_strategy is None
-        _, strategy = self.player_configs[self.mp_state.current_player_index]
-        return strategy is None
-
-    def _get_current_ai_strategy(self):
-        """In multiplayer, get the current player's AI strategy (or None if human)."""
-        if not self.multiplayer:
-            return self.ai_strategy
-        _, strategy = self.player_configs[self.mp_state.current_player_index]
-        return strategy
-
-    def _has_any_ai(self):
-        """Check if any player is AI (for speed control display)."""
-        if self.multiplayer:
-            return any(s is not None for _, s in self.player_configs)
-        return self.ai_strategy is not None
-
     def handle_events(self):
-        """Handle pygame events"""
-        is_human_turn = self._is_current_player_human()
-        game_over = self._is_game_over()
+        """Handle pygame events — translates input to coordinator actions"""
+        coord = self.coordinator
+        is_human_turn = coord.is_current_player_human
+        game_over = coord.game_over
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -438,31 +316,22 @@ class YahtzeeGame:
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
                 # Speed control (+/- keys) — when any AI is present
-                if self._has_any_ai() and not game_over:
+                if coord.has_any_ai and not game_over:
                     if event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
-                        idx = SPEED_NAMES.index(self.speed_name)
-                        if idx < len(SPEED_NAMES) - 1:
-                            self.speed_name = SPEED_NAMES[idx + 1]
-                            self.ai_delay, self.roll_duration, self.ai_hold_show_duration = SPEED_PRESETS[self.speed_name]
+                        coord.change_speed(+1)
                     elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
-                        idx = SPEED_NAMES.index(self.speed_name)
-                        if idx > 0:
-                            self.speed_name = SPEED_NAMES[idx - 1]
-                            self.ai_delay, self.roll_duration, self.ai_hold_show_duration = SPEED_PRESETS[self.speed_name]
+                        coord.change_speed(-1)
                 # Keyboard shortcuts for human players
-                if is_human_turn and not game_over and not self.is_rolling:
+                if is_human_turn and not game_over and not coord.is_rolling:
                     if event.key == pygame.K_SPACE:
-                        self.roll_dice()
+                        coord.roll_dice()
                     elif pygame.K_1 <= event.key <= pygame.K_5:
                         die_index = event.key - pygame.K_1
-                        if self.multiplayer:
-                            self.mp_state = mp_toggle_die_hold(self.mp_state, die_index)
-                        else:
-                            self.state = engine_toggle_die(self.state, die_index)
+                        coord.toggle_hold(die_index)
             elif event.type == pygame.MOUSEMOTION:
                 self.hovered_category = None
                 if not game_over and is_human_turn:
-                    scorecard = self._get_scorecard()
+                    scorecard = coord.scorecard
                     for cat, rect in self.category_rects.items():
                         if rect.collidepoint(event.pos) and not scorecard.is_filled(cat):
                             self.hovered_category = cat
@@ -470,148 +339,48 @@ class YahtzeeGame:
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1 and is_human_turn:
                     clicked_category = False
-                    if self.multiplayer:
-                        for cat, rect in self.category_rects.items():
-                            if rect.collidepoint(event.pos) and mp_can_select_category(self.mp_state, cat):
-                                self.mp_state = mp_select_category(self.mp_state, cat)
-                                self._on_turn_scored()
-                                clicked_category = True
-                                break
-                    else:
-                        for cat, rect in self.category_rects.items():
-                            if rect.collidepoint(event.pos) and can_select_category(self.state, cat):
-                                self.state = engine_select_category(self.state, cat)
+                    for cat, rect in self.category_rects.items():
+                        if rect.collidepoint(event.pos):
+                            if coord.select_category(cat):
                                 clicked_category = True
                                 break
 
-                    if not clicked_category and not self.is_rolling and not game_over:
+                    if not clicked_category and not coord.is_rolling and not game_over:
                         for i, sprite in enumerate(self.dice_sprites):
                             if sprite.contains_point(event.pos):
-                                if self.multiplayer:
-                                    self.mp_state = mp_toggle_die_hold(self.mp_state, i)
-                                else:
-                                    self.state = engine_toggle_die(self.state, i)
+                                coord.toggle_hold(i)
                                 break
 
             # Handle button clicks (only if not currently rolling and human turn)
-            if is_human_turn and self.roll_button.handle_event(event) and not self.is_rolling:
-                self.roll_dice()
+            if is_human_turn and self.roll_button.handle_event(event) and not coord.is_rolling:
+                coord.roll_dice()
 
             # Handle play again button (only when game is over)
             if game_over and self.play_again_button.handle_event(event):
-                self.reset_game()
-
-    def _on_turn_scored(self):
-        """Called after any player (human or AI) scores in multiplayer.
-        Triggers turn transition and resets AI state for the next player."""
-        if not self.multiplayer:
-            return
-        self.ai_needs_first_roll = True
-        self.ai_timer = 0
-        self.ai_reason = ""
-        self.ai_showing_holds = False
-        self.ai_hold_timer = 0
-        if not self.mp_state.game_over:
-            self.turn_transition = True
-            self.turn_transition_timer = 0
+                coord.reset_game()
 
     def update(self):
-        """Update game state"""
-        # Handle turn transition overlay (multiplayer only)
-        if self.turn_transition:
-            self.turn_transition_timer += 1
-            if self.turn_transition_timer >= self.turn_transition_duration:
-                self.turn_transition = False
-            return
+        """Update animation display values, then tick the coordinator."""
+        coord = self.coordinator
 
-        # Handle rolling animation
-        if self.is_rolling:
-            self.roll_timer += 1
-            current_dice = self._get_dice()
+        # During rolling, randomize display values for unheld dice (GUI-only animation)
+        if coord.is_rolling:
+            for i, die in enumerate(coord.dice):
+                if not die.held:
+                    self.animation_dice_values[i] = random.randint(1, 6)
 
-            # During animation, rapidly change display values (only for unheld dice)
-            if self.roll_timer < self.roll_duration:
-                for i, die in enumerate(current_dice):
-                    if not die.held:
-                        self.animation_dice_values[i] = random.randint(1, 6)
-            else:
-                # Animation complete - commit state change
-                if self.multiplayer:
-                    self.mp_state = self._pending_mp_state
-                else:
-                    self.state = self._pending_state
-                self.animation_dice_values = self.final_values.copy()
-                self.is_rolling = False
-            return
+        # Tick the coordinator's state machine
+        coord.tick()
 
-        # AI hold-showing pause — briefly display held dice before rolling
-        if self.ai_showing_holds:
-            self.ai_hold_timer += 1
-            if self.ai_hold_timer >= self.ai_hold_show_duration:
-                self.ai_showing_holds = False
-                self.roll_dice()
-            return
-
-        # Determine if current player is AI
-        current_strategy = self._get_current_ai_strategy()
-        game_over = self._is_game_over()
-
-        # AI controller — paces decisions with a timer so you can watch
-        if current_strategy and not game_over:
-            self.ai_timer += 1
-            if self.ai_timer < self.ai_delay:
-                return
-            self.ai_timer = 0
-
-            # First roll of the turn (mandatory)
-            if self.ai_needs_first_roll:
-                self.roll_dice()
-                self.ai_needs_first_roll = False
-                return
-
-            # Build a temporary single-player GameState for the AI strategy
-            if self.multiplayer:
-                temp_state = GameState(
-                    dice=self.mp_state.dice,
-                    scorecard=mp_get_current_scorecard(self.mp_state),
-                    rolls_used=self.mp_state.rolls_used,
-                    current_round=self.mp_state.current_round,
-                    game_over=self.mp_state.game_over,
-                )
-                action = current_strategy.choose_action(temp_state)
-            else:
-                action = current_strategy.choose_action(self.state)
-            self.ai_reason = action.reason
-
-            if isinstance(action, ScoreAction):
-                if self.multiplayer:
-                    self.mp_state = mp_select_category(self.mp_state, action.category)
-                    self._on_turn_scored()
-                else:
-                    self.state = engine_select_category(self.state, action.category)
-                    self.ai_needs_first_roll = True
-            elif isinstance(action, RollAction):
-                # Apply holds: set each die to match the strategy's request
-                if self.multiplayer:
-                    for i in range(5):
-                        should_hold = i in action.hold
-                        is_held = self.mp_state.dice[i].held
-                        if should_hold != is_held:
-                            self.mp_state = mp_toggle_die_hold(self.mp_state, i)
-                else:
-                    for i in range(5):
-                        should_hold = i in action.hold
-                        is_held = self.state.dice[i].held
-                        if should_hold != is_held:
-                            self.state = engine_toggle_die(self.state, i)
-                # Pause to show the held dice before rolling
-                self.ai_showing_holds = True
-                self.ai_hold_timer = 0
+        # After tick, if rolling just finished, sync animation values to final
+        if not coord.is_rolling:
+            self.animation_dice_values = [die.value for die in coord.dice]
 
     def draw_scorecard(self):
         """Draw the scorecard UI on the right side of screen"""
-        scorecard = self._get_scorecard()
-        dice = self._get_dice()
+        coord = self.coordinator
+        scorecard = coord.scorecard
+        dice = coord.dice
 
         # Scorecard position and dimensions
         scorecard_x = 620
@@ -632,9 +401,9 @@ class YahtzeeGame:
         y = scorecard_y
 
         # Player name header in multiplayer
-        if self.multiplayer:
-            idx = self.mp_state.current_player_index
-            name, _ = self.player_configs[idx]
+        if coord.multiplayer:
+            idx = coord.current_player_index
+            name, _ = coord.player_configs[idx]
             color = PLAYER_COLORS[idx % len(PLAYER_COLORS)]
             name_header = font_bold.render(f"{name}'s Scorecard", True, color)
             self.screen.blit(name_header, (scorecard_x, y))
@@ -721,22 +490,23 @@ class YahtzeeGame:
 
     def draw_player_bar(self):
         """Draw horizontal bar showing all players' names and scores (multiplayer only)."""
+        coord = self.coordinator
         bar_y = 130
         bar_height = 32
         font = pygame.font.Font(None, 26)
-        num = self.mp_state.num_players
+        num = coord.num_players
         # Calculate per-player chip width to fit across the available width
         bar_width = min(180, (WINDOW_WIDTH - 100) // num)
         total_width = bar_width * num
         start_x = (WINDOW_WIDTH - total_width) // 2
 
         for i in range(num):
-            name, strategy = self.player_configs[i]
-            score = self.mp_state.scorecards[i].get_grand_total()
+            name, strategy = coord.player_configs[i]
+            score = coord.all_scorecards[i].get_grand_total()
             color = PLAYER_COLORS[i % len(PLAYER_COLORS)]
             chip_rect = pygame.Rect(start_x + i * bar_width, bar_y, bar_width - 4, bar_height)
 
-            if i == self.mp_state.current_player_index and not self.mp_state.game_over:
+            if i == coord.current_player_index and not coord.game_over:
                 # Active player: filled background
                 pygame.draw.rect(self.screen, color, chip_rect, border_radius=6)
                 text_color = WHITE
@@ -753,15 +523,16 @@ class YahtzeeGame:
 
     def draw_turn_transition(self):
         """Draw brief overlay showing whose turn it is next."""
-        if not self.turn_transition:
+        coord = self.coordinator
+        if not coord.turn_transition:
             return
         # Semi-transparent overlay
         overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 100))
         self.screen.blit(overlay, (0, 0))
 
-        idx = self.mp_state.current_player_index
-        name, strategy = self.player_configs[idx]
+        idx = coord.current_player_index
+        name, strategy = coord.player_configs[idx]
         color = PLAYER_COLORS[idx % len(PLAYER_COLORS)]
 
         font = pygame.font.Font(None, 56)
@@ -781,13 +552,14 @@ class YahtzeeGame:
 
     def draw_game_over(self):
         """Draw the game over screen overlay."""
+        coord = self.coordinator
         # Semi-transparent overlay
         overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
         overlay.set_alpha(220)
         overlay.fill((240, 240, 240))
         self.screen.blit(overlay, (0, 0))
 
-        if self.multiplayer:
+        if coord.multiplayer:
             self._draw_game_over_multiplayer()
         else:
             self._draw_game_over_single()
@@ -797,7 +569,8 @@ class YahtzeeGame:
 
     def _draw_game_over_single(self):
         """Draw single-player game over with per-category score breakdown."""
-        scorecard = self.state.scorecard
+        coord = self.coordinator
+        scorecard = coord.scorecard
 
         # Game Over title
         title_font = pygame.font.Font(None, 72)
@@ -878,6 +651,7 @@ class YahtzeeGame:
 
     def _draw_game_over_multiplayer(self):
         """Draw multiplayer game over with ranked standings."""
+        coord = self.coordinator
         # Game Over title
         title_font = pygame.font.Font(None, 72)
         title_text = title_font.render("GAME OVER!", True, BLACK)
@@ -886,8 +660,8 @@ class YahtzeeGame:
 
         # Build standings: list of (player_index, name, strategy, score) sorted by score desc
         standings = []
-        for i, (name, strategy) in enumerate(self.player_configs):
-            score = self.mp_state.scorecards[i].get_grand_total()
+        for i, (name, strategy) in enumerate(coord.player_configs):
+            score = coord.all_scorecards[i].get_grand_total()
             standings.append((i, name, strategy, score))
         standings.sort(key=lambda x: x[3], reverse=True)
 
@@ -923,7 +697,7 @@ class YahtzeeGame:
             self.screen.blit(score_text, score_rect)
 
             # Draw score breakdown details
-            sc = self.mp_state.scorecards[idx]
+            sc = coord.all_scorecards[idx]
             upper = sc.get_upper_section_total()
             bonus = sc.get_upper_section_bonus()
             lower = sc.get_lower_section_total()
@@ -941,13 +715,14 @@ class YahtzeeGame:
 
     def draw(self):
         """Draw everything to the screen"""
+        coord = self.coordinator
         # Clear screen with subtle background color
         self.screen.fill(BACKGROUND)
 
-        dice = self._get_dice()
-        rolls_used = self._get_rolls_used()
-        game_over = self._is_game_over()
-        current_round = self._get_current_round()
+        dice = coord.dice
+        rolls_used = coord.rolls_used
+        game_over = coord.game_over
+        current_round = coord.current_round
 
         # Draw title with shadow effect
         font = pygame.font.Font(None, 72)
@@ -960,9 +735,9 @@ class YahtzeeGame:
 
         # Draw round and turn indicator
         round_font = pygame.font.Font(None, 36)
-        if self.multiplayer:
-            idx = self.mp_state.current_player_index
-            name, strategy = self.player_configs[idx]
+        if coord.multiplayer:
+            idx = coord.current_player_index
+            name, strategy = coord.player_configs[idx]
             color = PLAYER_COLORS[idx % len(PLAYER_COLORS)]
             if strategy is None:
                 turn_label = f"Round {current_round}/13 — Your turn ({name})"
@@ -976,49 +751,45 @@ class YahtzeeGame:
             self.screen.blit(round_text, (50, 90))
 
         # Draw AI/speed indicator
-        if not self.multiplayer and self.ai_strategy:
+        if not coord.multiplayer and coord.ai_strategy:
             ai_font = pygame.font.Font(None, 28)
-            ai_name = self.ai_strategy.__class__.__name__.replace("Strategy", "")
-            speed_label = self.speed_name.capitalize()
+            ai_name = coord.ai_strategy.__class__.__name__.replace("Strategy", "")
+            speed_label = coord.speed_name.capitalize()
             ai_text = ai_font.render(f"AI: {ai_name} | Speed: {speed_label} (+/-)", True, (180, 80, 80))
             self.screen.blit(ai_text, (50, 120))
-        elif self.multiplayer and self._has_any_ai():
+        elif coord.multiplayer and coord.has_any_ai:
             ai_font = pygame.font.Font(None, 24)
-            speed_label = self.speed_name.capitalize()
+            speed_label = coord.speed_name.capitalize()
             ai_text = ai_font.render(f"Speed: {speed_label} (+/-)", True, (140, 140, 160))
             self.screen.blit(ai_text, (50, 120))
 
         # Draw player bar (multiplayer only)
-        if self.multiplayer:
+        if coord.multiplayer:
             self.draw_player_bar()
 
         # Draw all dice sprites
         for i, sprite in enumerate(self.dice_sprites):
             die_state = dice[i]
 
-            if rolls_used == 0 and not self.is_rolling:
+            if rolls_used == 0 and not coord.is_rolling:
                 sprite.draw_in_cup(self.screen)
                 continue
 
-            if self.is_rolling:
+            if coord.is_rolling:
                 display_value = self.animation_dice_values[i]
                 display_state = DieState(value=display_value, held=die_state.held)
             else:
                 display_state = die_state
 
-            if self.is_rolling and not die_state.held:
-                shake_x = int(math.sin(self.roll_timer * 0.5) * 3)
-                shake_y = int(math.cos(self.roll_timer * 0.7) * 3)
+            if coord.is_rolling and not die_state.held:
+                shake_x = int(math.sin(coord.roll_timer * 0.5) * 3)
+                shake_y = int(math.cos(coord.roll_timer * 0.7) * 3)
                 sprite.draw(self.screen, display_state, shake_x, shake_y)
             else:
                 sprite.draw(self.screen, display_state)
 
         # Draw roll button
-        if self.multiplayer:
-            can_roll_now = mp_can_roll(self.mp_state) and not self.is_rolling
-        else:
-            can_roll_now = can_roll(self.state) and not self.is_rolling
-        self.roll_button.enabled = can_roll_now
+        self.roll_button.enabled = coord.can_roll_now
         self.roll_button.draw(self.screen)
 
         # Draw roll status
@@ -1031,11 +802,10 @@ class YahtzeeGame:
         self.screen.blit(roll_text, (200, 560))
 
         # Draw AI reasoning text below roll status
-        current_strategy = self._get_current_ai_strategy()
-        if current_strategy and self.ai_reason:
+        if coord.current_ai_strategy and coord.ai_reason:
             reason_font = pygame.font.Font(None, 24)
             max_width = 480
-            words = self.ai_reason.split()
+            words = coord.ai_reason.split()
             lines = []
             current_line = ""
             for word in words:
@@ -1064,7 +834,7 @@ class YahtzeeGame:
             self.draw_game_over()
 
         # Draw turn transition overlay (on top of everything)
-        if self.multiplayer:
+        if coord.multiplayer:
             self.draw_turn_transition()
 
         # Update display
@@ -1080,35 +850,6 @@ class YahtzeeGame:
 
         pygame.quit()
         sys.exit()
-
-
-def _make_strategy(token):
-    """Create a strategy instance from a CLI token, or None for 'human'."""
-    if token == "human":
-        return None
-    elif token == "random":
-        return RandomStrategy()
-    elif token == "greedy":
-        return GreedyStrategy()
-    elif token == "ev":
-        return ExpectedValueStrategy()
-
-
-def parse_args():
-    """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(description="Yahtzee Game")
-    # Single-player AI mode (backward compatible)
-    parser.add_argument("--ai", action="store_true", help="Enable AI player")
-    parser.add_argument("--random", action="store_true", help="Use Random strategy (with --ai)")
-    parser.add_argument("--greedy", action="store_true", help="Use Greedy strategy (with --ai)")
-    parser.add_argument("--ev", action="store_true", help="Use ExpectedValue strategy (with --ai)")
-    # Multiplayer mode
-    parser.add_argument("--players", nargs="+", choices=["human", "random", "greedy", "ev"],
-                        metavar="TYPE",
-                        help="Multiplayer: list player types (human, random, greedy, ev)")
-    parser.add_argument("--speed", choices=["slow", "normal", "fast"], default="normal",
-                        help="AI playback speed (default: normal)")
-    return parser.parse_args()
 
 
 def main():
@@ -1140,11 +881,11 @@ def main():
         ai_strategy = None
         if args.ai:
             if args.random:
-                ai_strategy = RandomStrategy()
+                ai_strategy = _make_strategy("random")
             elif args.ev:
-                ai_strategy = ExpectedValueStrategy()
+                ai_strategy = _make_strategy("ev")
             else:
-                ai_strategy = GreedyStrategy()
+                ai_strategy = _make_strategy("greedy")
 
         game = YahtzeeGame(ai_strategy=ai_strategy, speed=args.speed)
 
