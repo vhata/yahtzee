@@ -1002,6 +1002,7 @@ class YahtzeeGame:
 def main():
     """Entry point for the game"""
     args = parse_args()
+    print("Yahtzee! Use --help for options, --players for multiplayer")
 
     if args.players:
         # Multiplayer mode
