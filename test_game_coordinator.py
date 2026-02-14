@@ -21,7 +21,8 @@ from game_engine import (
 )
 from ai import (
     RollAction, ScoreAction,
-    RandomStrategy, GreedyStrategy, ExpectedValueStrategy,
+    RandomStrategy, GreedyStrategy, ExpectedValueStrategy, OptimalStrategy,
+    play_game,
 )
 from game_coordinator import (
     GameCoordinator, parse_args, _make_strategy,
@@ -912,7 +913,54 @@ class TestScoreAnimation:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 10. SMOKE RENDERING TESTS
+# 10. INTEGRATION TESTS
+#    Verify that GameCoordinator's AI tick loop produces the same final score
+#    as the headless play_game() function, given the same random seed.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+INTEGRATION_STRATEGIES = [
+    pytest.param(RandomStrategy, id="Random"),
+    pytest.param(GreedyStrategy, id="Greedy"),
+    pytest.param(OptimalStrategy, id="Optimal"),
+]
+
+INTEGRATION_SEEDS = list(range(10))
+
+
+class TestIntegration:
+    """Coordinator tick loop must produce identical scores to headless play_game()."""
+
+    @staticmethod
+    def _tick_until_game_over(coordinator, max_ticks=500_000):
+        """Tick the coordinator until game_over is True."""
+        for _ in range(max_ticks):
+            coordinator.tick()
+            if coordinator.game_over:
+                return
+        raise TimeoutError(f"Game did not finish after {max_ticks} ticks")
+
+    @pytest.mark.parametrize("strategy_cls", INTEGRATION_STRATEGIES)
+    @pytest.mark.parametrize("seed", INTEGRATION_SEEDS)
+    def test_coordinator_matches_headless(self, strategy_cls, seed):
+        """Coordinator AI tick loop produces the same final score as play_game()."""
+        # Run headless play_game()
+        random.seed(seed)
+        headless_state = play_game(strategy_cls())
+
+        # Run coordinator tick loop with the same seed
+        random.seed(seed)
+        coordinator = GameCoordinator(ai_strategy=strategy_cls(), speed="fast")
+        self._tick_until_game_over(coordinator)
+
+        assert coordinator.scorecard.get_grand_total() == headless_state.scorecard.get_grand_total(), (
+            f"seed={seed} strategy={strategy_cls.__name__}: "
+            f"coordinator={coordinator.scorecard.get_grand_total()} != "
+            f"headless={headless_state.scorecard.get_grand_total()}"
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 11. SMOKE RENDERING TESTS
 #    Verify that YahtzeeGame.draw() doesn't crash in headless pygame.
 # ═══════════════════════════════════════════════════════════════════════════════
 
