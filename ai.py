@@ -18,6 +18,7 @@ from game_engine import (
     Category, GameState, DieState, Scorecard,
     roll_dice, toggle_die_hold, select_category,
     can_roll, can_select_category, calculate_score,
+    calculate_score_in_context,
 )
 
 
@@ -196,7 +197,7 @@ class GreedyStrategy(YahtzeeStrategy):
         for cat in [Category.YAHTZEE, Category.LARGE_STRAIGHT,
                     Category.SMALL_STRAIGHT, Category.FULL_HOUSE]:
             if cat in available:
-                score = calculate_score(cat, state.dice)
+                score = calculate_score_in_context(cat, state.dice, state.scorecard)
                 if score >= _GOOD_SCORE_THRESHOLDS[cat]:
                     return ScoreAction(
                         category=cat,
@@ -205,7 +206,7 @@ class GreedyStrategy(YahtzeeStrategy):
         # Check upper section — take if >= 3x face value (on track for bonus)
         for cat, face in _UPPER_CATS.items():
             if cat in available:
-                score = calculate_score(cat, state.dice)
+                score = calculate_score_in_context(cat, state.dice, state.scorecard)
                 if score >= face * 3:
                     return ScoreAction(
                         category=cat,
@@ -214,7 +215,7 @@ class GreedyStrategy(YahtzeeStrategy):
         # Check n-of-a-kind categories for high scores
         for cat in [Category.FOUR_OF_KIND, Category.THREE_OF_KIND]:
             if cat in available:
-                score = calculate_score(cat, state.dice)
+                score = calculate_score_in_context(cat, state.dice, state.scorecard)
                 if score >= 20:
                     return ScoreAction(
                         category=cat,
@@ -222,7 +223,7 @@ class GreedyStrategy(YahtzeeStrategy):
 
         # Check Chance for high scores
         if Category.CHANCE in available:
-            score = calculate_score(Category.CHANCE, state.dice)
+            score = calculate_score_in_context(Category.CHANCE, state.dice, state.scorecard)
             if score >= 25:
                 return ScoreAction(
                     category=Category.CHANCE,
@@ -267,7 +268,7 @@ class GreedyStrategy(YahtzeeStrategy):
         best_score = -1
 
         for cat in available:
-            score = calculate_score(cat, state.dice)
+            score = calculate_score_in_context(cat, state.dice, state.scorecard)
 
             # Weight upper section scores to encourage bonus
             if cat in _UPPER_CATS:
@@ -284,7 +285,7 @@ class GreedyStrategy(YahtzeeStrategy):
         if best_score == 0:
             return self._waste_category(state, available)
 
-        actual_score = calculate_score(best_cat, state.dice)
+        actual_score = calculate_score_in_context(best_cat, state.dice, state.scorecard)
         return ScoreAction(
             category=best_cat,
             reason=f"Out of rolls — best available is {best_cat.value} for {actual_score}")
@@ -345,7 +346,7 @@ class ExpectedValueStrategy(YahtzeeStrategy):
     def choose_action(self, state: GameState) -> Union[RollAction, ScoreAction]:
         if state.rolls_used >= 3:
             best_cat = self._best_category(state)
-            score = calculate_score(best_cat, state.dice)
+            score = calculate_score_in_context(best_cat, state.dice, state.scorecard)
             return ScoreAction(
                 category=best_cat,
                 reason=f"Out of rolls — {best_cat.value} is the best option for {score}")
@@ -375,7 +376,7 @@ class ExpectedValueStrategy(YahtzeeStrategy):
 
         # Compare: score now vs roll again
         if best_now_score >= best_hold_ev:
-            actual_score = calculate_score(best_now_cat, state.dice)
+            actual_score = calculate_score_in_context(best_now_cat, state.dice, state.scorecard)
             return ScoreAction(
                 category=best_now_cat,
                 reason=f"Scoring {best_now_cat.value} for {actual_score} (EV of rolling: {best_hold_ev:.1f})")
@@ -435,8 +436,45 @@ class ExpectedValueStrategy(YahtzeeStrategy):
         return best_cat
 
     def _adjusted_score(self, state: GameState, cat: Category) -> float:
-        """Calculate score with upper section bonus consideration."""
-        return self._adjusted_score_for_dice(state, cat, state.dice)
+        """Calculate score with upper section bonus consideration.
+
+        Uses calculate_score_in_context for the actual dice (not simulated)
+        so joker rules are applied when scoring now.
+        """
+        raw_score = float(calculate_score_in_context(cat, state.dice, state.scorecard))
+        adjustment = 0.0
+
+        # Opportunity cost: penalize using a category for less than its EV
+        category_ev = CATEGORY_EV[cat]
+        if raw_score > 0:
+            opportunity_cost = max(0.0, category_ev - raw_score)
+            adjustment -= opportunity_cost
+        else:
+            # Zero score: heavy penalty based on the category's expected value
+            adjustment -= (category_ev + 5.0)
+
+        # Upper bonus delta: how does scoring here affect bonus probability?
+        if cat in _UPPER_CATS:
+            upper_total = state.scorecard.get_upper_section_total()
+            upper_filled = sum(1 for c in _UPPER_CATS if state.scorecard.is_filled(c))
+            upper_remaining = 6 - upper_filled
+
+            if upper_remaining > 0:
+                needed = 63 - upper_total
+                expected_remaining_before = sum(
+                    _UPPER_TARGETS[c] for c in _UPPER_CATS
+                    if not state.scorecard.is_filled(c)
+                )
+                expected_remaining_after = expected_remaining_before - _UPPER_TARGETS[cat] + raw_score
+
+                scale = max(10.0, upper_remaining * 3.0)
+
+                p_before = max(0.0, min(1.0, (expected_remaining_before - needed) / scale + 0.5))
+                p_after = max(0.0, min(1.0, (expected_remaining_after - needed) / scale + 0.5))
+
+                adjustment += (p_after - p_before) * 35.0
+
+        return raw_score + adjustment
 
     def _adjusted_score_for_dice(self, state: GameState, cat: Category,
                                   dice: Tuple[DieState, ...]) -> float:
@@ -517,7 +555,7 @@ class OptimalStrategy(YahtzeeStrategy):
 
         if state.rolls_used >= 3:
             best_cat = self._best_category(state, available, available_indices)
-            score = calculate_score(best_cat, state.dice)
+            score = calculate_score_in_context(best_cat, state.dice, state.scorecard)
             return ScoreAction(
                 category=best_cat,
                 reason=f"Must score — {best_cat.value} for {score}")
@@ -534,7 +572,7 @@ class OptimalStrategy(YahtzeeStrategy):
             best_hold, best_hold_ev = self._best_hold_ev(combo, roll_values)
 
             if best_score_val >= best_hold_ev:
-                score = calculate_score(best_score_cat, state.dice)
+                score = calculate_score_in_context(best_score_cat, state.dice, state.scorecard)
                 return ScoreAction(
                     category=best_score_cat,
                     reason=f"Scoring {best_score_cat.value} for {score} (roll EV: {best_hold_ev:.1f})")
@@ -555,7 +593,7 @@ class OptimalStrategy(YahtzeeStrategy):
             best_hold, best_hold_ev = self._best_hold_ev(combo, roll2_values)
 
             if best_score_val >= best_hold_ev:
-                score = calculate_score(best_score_cat, state.dice)
+                score = calculate_score_in_context(best_score_cat, state.dice, state.scorecard)
                 return ScoreAction(
                     category=best_score_cat,
                     reason=f"Scoring {best_score_cat.value} for {score} (2-roll EV: {best_hold_ev:.1f})")

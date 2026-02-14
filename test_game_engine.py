@@ -23,7 +23,8 @@ from game_engine import (
     DieState, GameState, Category, Scorecard,
     roll_dice, toggle_die_hold, select_category,
     can_roll, can_select_category, reset_game,
-    calculate_score, has_yahtzee, has_full_house,
+    calculate_score, calculate_score_in_context,
+    has_yahtzee, has_full_house,
     has_small_straight, has_large_straight, has_n_of_kind,
     MultiplayerGameState,
     mp_roll_dice, mp_toggle_die_hold, mp_select_category,
@@ -1003,6 +1004,225 @@ class TestGameFlow:
 
     def test_exactly_13_categories_exist(self):
         assert len(list(Category)) == 13
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 8b. YAHTZEE BONUS AND JOKER RULES
+#    Rule: +100 bonus for each additional Yahtzee when the first was scored 50.
+#    Rule: Joker rules apply when bonus Yahtzee AND matching upper cat is filled:
+#          Full House → 25, Small Straight → 30, Large Straight → 40.
+#    Rule: Three/Four of Kind, Chance, upper cats → normal calculation.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestYahtzeeBonusTracking:
+    """Yahtzee bonus: +100 per additional Yahtzee when first was scored 50."""
+
+    def test_first_yahtzee_no_bonus(self):
+        state = state_with_dice(6, 6, 6, 6, 6)
+        state = select_category(state, Category.YAHTZEE)
+        assert state.scorecard.yahtzee_bonus_count == 0
+        assert state.scorecard.scores[Category.YAHTZEE] == 50
+
+    def test_second_yahtzee_awards_bonus(self):
+        state = state_with_dice(6, 6, 6, 6, 6)
+        state = select_category(state, Category.YAHTZEE)
+        state = replace(state, dice=make_dice(3, 3, 3, 3, 3), rolls_used=1)
+        state = select_category(state, Category.THREES)
+        assert state.scorecard.yahtzee_bonus_count == 1
+
+    def test_no_bonus_if_yahtzee_scored_zero(self):
+        """If Yahtzee was scored as 0 (not a Yahtzee), no bonus on subsequent."""
+        sc = Scorecard()
+        sc.set_score(Category.YAHTZEE, 0)
+        state = GameState(
+            dice=make_dice(4, 4, 4, 4, 4),
+            scorecard=sc, rolls_used=1, current_round=2,
+        )
+        state = select_category(state, Category.FOURS)
+        assert state.scorecard.yahtzee_bonus_count == 0
+
+    def test_multiple_bonuses_accumulate(self):
+        sc = Scorecard()
+        sc.set_score(Category.YAHTZEE, 50)
+        sc.yahtzee_bonus_count = 2  # Already got 2 bonuses
+        state = GameState(
+            dice=make_dice(5, 5, 5, 5, 5),
+            scorecard=sc, rolls_used=1, current_round=4,
+        )
+        state = select_category(state, Category.FIVES)
+        assert state.scorecard.yahtzee_bonus_count == 3
+
+    def test_grand_total_includes_bonuses(self):
+        sc = Scorecard()
+        sc.set_score(Category.YAHTZEE, 50)
+        sc.set_score(Category.CHANCE, 20)
+        sc.yahtzee_bonus_count = 2
+        assert sc.get_grand_total() == 50 + 20 + 200  # 270
+
+    def test_copy_preserves_bonus_count(self):
+        sc = Scorecard()
+        sc.yahtzee_bonus_count = 3
+        copy = sc.copy()
+        assert copy.yahtzee_bonus_count == 3
+        copy.yahtzee_bonus_count = 0
+        assert sc.yahtzee_bonus_count == 3  # original unchanged
+
+    def test_bonus_not_awarded_for_non_yahtzee(self):
+        """Regular dice (not all same) never trigger bonus."""
+        sc = Scorecard()
+        sc.set_score(Category.YAHTZEE, 50)
+        state = GameState(
+            dice=make_dice(1, 2, 3, 4, 5),
+            scorecard=sc, rolls_used=1, current_round=2,
+        )
+        state = select_category(state, Category.CHANCE)
+        assert state.scorecard.yahtzee_bonus_count == 0
+
+
+class TestJokerRules:
+    """Joker rules: when bonus Yahtzee and matching upper cat is filled."""
+
+    def test_joker_full_house_scores_25(self):
+        """With joker rules, a Yahtzee scores 25 as Full House."""
+        sc = Scorecard()
+        sc.set_score(Category.YAHTZEE, 50)
+        sc.set_score(Category.THREES, 9)  # matching upper cat filled
+        dice = make_dice(3, 3, 3, 3, 3)
+        assert calculate_score_in_context(Category.FULL_HOUSE, dice, sc) == 25
+
+    def test_joker_small_straight_scores_30(self):
+        sc = Scorecard()
+        sc.set_score(Category.YAHTZEE, 50)
+        sc.set_score(Category.FOURS, 12)
+        dice = make_dice(4, 4, 4, 4, 4)
+        assert calculate_score_in_context(Category.SMALL_STRAIGHT, dice, sc) == 30
+
+    def test_joker_large_straight_scores_40(self):
+        sc = Scorecard()
+        sc.set_score(Category.YAHTZEE, 50)
+        sc.set_score(Category.FIVES, 15)
+        dice = make_dice(5, 5, 5, 5, 5)
+        assert calculate_score_in_context(Category.LARGE_STRAIGHT, dice, sc) == 40
+
+    def test_joker_three_of_kind_scores_sum(self):
+        sc = Scorecard()
+        sc.set_score(Category.YAHTZEE, 50)
+        sc.set_score(Category.SIXES, 18)
+        dice = make_dice(6, 6, 6, 6, 6)
+        assert calculate_score_in_context(Category.THREE_OF_KIND, dice, sc) == 30
+
+    def test_joker_four_of_kind_scores_sum(self):
+        sc = Scorecard()
+        sc.set_score(Category.YAHTZEE, 50)
+        sc.set_score(Category.SIXES, 18)
+        dice = make_dice(6, 6, 6, 6, 6)
+        assert calculate_score_in_context(Category.FOUR_OF_KIND, dice, sc) == 30
+
+    def test_joker_chance_scores_sum(self):
+        sc = Scorecard()
+        sc.set_score(Category.YAHTZEE, 50)
+        sc.set_score(Category.TWOS, 6)
+        dice = make_dice(2, 2, 2, 2, 2)
+        assert calculate_score_in_context(Category.CHANCE, dice, sc) == 10
+
+    def test_no_joker_when_upper_cat_open(self):
+        """If matching upper cat is NOT filled, no joker — normal rules apply."""
+        sc = Scorecard()
+        sc.set_score(Category.YAHTZEE, 50)
+        # THREES is NOT filled
+        dice = make_dice(3, 3, 3, 3, 3)
+        # Full House normally requires 3+2, Yahtzee (5 of kind) doesn't qualify
+        assert calculate_score_in_context(Category.FULL_HOUSE, dice, sc) == 0
+
+    def test_no_joker_when_yahtzee_scored_zero(self):
+        """No joker rules if Yahtzee was scored as 0."""
+        sc = Scorecard()
+        sc.set_score(Category.YAHTZEE, 0)
+        sc.set_score(Category.FOURS, 12)
+        dice = make_dice(4, 4, 4, 4, 4)
+        # Without joker, Full House doesn't apply to 5-of-a-kind
+        assert calculate_score_in_context(Category.FULL_HOUSE, dice, sc) == 0
+
+    def test_no_joker_when_not_yahtzee(self):
+        """Normal dice (not all same) never trigger joker."""
+        sc = Scorecard()
+        sc.set_score(Category.YAHTZEE, 50)
+        sc.set_score(Category.ONES, 3)
+        dice = make_dice(1, 1, 1, 2, 3)
+        assert calculate_score_in_context(Category.FULL_HOUSE, dice, sc) == 0
+
+    def test_no_joker_when_yahtzee_not_scored_yet(self):
+        """If Yahtzee category is unfilled, no joker."""
+        sc = Scorecard()
+        # Yahtzee not scored
+        sc.set_score(Category.FOURS, 12)
+        dice = make_dice(4, 4, 4, 4, 4)
+        assert calculate_score_in_context(Category.FULL_HOUSE, dice, sc) == 0
+
+    def test_context_delegates_to_normal_for_non_yahtzee_dice(self):
+        """calculate_score_in_context matches calculate_score for non-Yahtzee dice."""
+        sc = Scorecard()
+        sc.set_score(Category.YAHTZEE, 50)
+        dice = make_dice(1, 2, 3, 4, 5)
+        for cat in Category:
+            if not sc.is_filled(cat):
+                assert calculate_score_in_context(cat, dice, sc) == calculate_score(cat, dice)
+
+    def test_joker_upper_category_scores_normally(self):
+        """Joker doesn't change upper category scoring — just sum of matching."""
+        sc = Scorecard()
+        sc.set_score(Category.YAHTZEE, 50)
+        sc.set_score(Category.FOURS, 12)  # This upper cat is filled
+        dice = make_dice(4, 4, 4, 4, 4)
+        # Fours is already filled, but Ones should score normally (0 fours found? no, these are 4s)
+        # Let's check FIVES which is not filled — normal score is 0
+        assert calculate_score_in_context(Category.FIVES, dice, sc) == 0
+        # SIXES not filled — normal score is 0
+        assert calculate_score_in_context(Category.SIXES, dice, sc) == 0
+
+
+class TestMultiplayerYahtzeeBonus:
+    """Bonus Yahtzees work correctly across multiplayer turn rotation."""
+
+    def test_bonus_tracks_per_player(self):
+        """Each player's scorecard independently tracks bonus count."""
+        state = MultiplayerGameState.create_initial(2)
+        # Give player 0 a Yahtzee
+        state = replace(state, dice=make_dice(5, 5, 5, 5, 5), rolls_used=1)
+        state = mp_select_category(state, Category.YAHTZEE)
+        assert state.scorecards[0].scores[Category.YAHTZEE] == 50
+        assert state.scorecards[0].yahtzee_bonus_count == 0
+
+        # Player 1 plays normally
+        state = replace(state, dice=make_dice(1, 2, 3, 4, 5), rolls_used=1)
+        state = mp_select_category(state, Category.CHANCE)
+
+        # Player 0 gets another Yahtzee — should get bonus
+        state = replace(state, dice=make_dice(5, 5, 5, 5, 5), rolls_used=1)
+        state = mp_select_category(state, Category.FIVES)
+        assert state.scorecards[0].yahtzee_bonus_count == 1
+        assert state.scorecards[1].yahtzee_bonus_count == 0
+
+    def test_mp_joker_rules_apply(self):
+        """Joker rules work in multiplayer."""
+        sc0 = Scorecard()
+        sc0.set_score(Category.YAHTZEE, 50)
+        sc0.set_score(Category.THREES, 9)  # matching upper filled
+        sc1 = Scorecard()
+
+        state = MultiplayerGameState(
+            num_players=2,
+            scorecards=(sc0, sc1),
+            current_player_index=0,
+            dice=make_dice(3, 3, 3, 3, 3),
+            rolls_used=1,
+            current_round=3,
+        )
+        state = mp_select_category(state, Category.FULL_HOUSE)
+        # Joker: Full House should score 25
+        assert state.scorecards[0].scores[Category.FULL_HOUSE] == 25
+        assert state.scorecards[0].yahtzee_bonus_count == 1
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

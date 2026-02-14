@@ -35,6 +35,7 @@ class Scorecard:
         """Initialize an empty scorecard"""
         # Dictionary to store scores for each category (None = not filled)
         self.scores = {category: None for category in Category}
+        self.yahtzee_bonus_count = 0
 
     def is_filled(self, category):
         """Check if a category has been filled"""
@@ -44,6 +45,10 @@ class Scorecard:
         """Set the score for a category"""
         if not self.is_filled(category):
             self.scores[category] = score
+
+    def yahtzee_bonuses(self):
+        """Calculate total Yahtzee bonus points (+100 per additional Yahtzee)."""
+        return self.yahtzee_bonus_count * 100
 
     def get_upper_section_total(self):
         """Calculate total for upper section (Ones through Sixes)"""
@@ -74,7 +79,8 @@ class Scorecard:
         """Calculate grand total including bonus"""
         return (self.get_upper_section_total() +
                 self.get_upper_section_bonus() +
-                self.get_lower_section_total())
+                self.get_lower_section_total() +
+                self.yahtzee_bonuses())
 
     def is_complete(self):
         """Check if all categories are filled"""
@@ -84,6 +90,7 @@ class Scorecard:
         """Create a deep copy of the scorecard"""
         new_card = Scorecard()
         new_card.scores = self.scores.copy()
+        new_card.yahtzee_bonus_count = self.yahtzee_bonus_count
         return new_card
 
     def with_score(self, category, score):
@@ -257,6 +264,59 @@ def calculate_score(category, dice):
     return 0
 
 
+_VALUE_TO_UPPER_CAT = {
+    1: Category.ONES, 2: Category.TWOS, 3: Category.THREES,
+    4: Category.FOURS, 5: Category.FIVES, 6: Category.SIXES,
+}
+
+
+def calculate_score_in_context(category, dice, scorecard):
+    """Calculate score considering Yahtzee bonus and joker rules.
+
+    Standard Yahtzee rules:
+    - If dice are not a Yahtzee, delegate to calculate_score()
+    - If Yahtzee category not yet scored or scored as 0, delegate to calculate_score()
+    - If Yahtzee was scored 50+ AND the matching upper category is already filled,
+      joker rules apply:
+      - Full House -> 25, Small Straight -> 30, Large Straight -> 40
+      - Three/Four of Kind, Chance -> normal calc (sum of dice)
+      - Upper categories -> normal calc
+    - Otherwise delegate to calculate_score()
+
+    Note: The Yahtzee bonus count increment is NOT handled here -- that happens
+    in select_category() and mp_select_category().
+    """
+    # Not a Yahtzee? Normal scoring.
+    if not has_yahtzee(dice):
+        return calculate_score(category, dice)
+
+    # Yahtzee not yet scored, or scored as 0? Normal scoring (no joker).
+    yahtzee_score = scorecard.scores.get(Category.YAHTZEE)
+    if yahtzee_score is None or yahtzee_score < 50:
+        return calculate_score(category, dice)
+
+    # We have a Yahtzee and the Yahtzee category was scored 50+.
+    # Check if the matching upper category is filled.
+    die_value = dice[0].value
+    matching_upper = _VALUE_TO_UPPER_CAT[die_value]
+
+    if not scorecard.is_filled(matching_upper):
+        # Matching upper category is open -- normal rules apply (no joker).
+        return calculate_score(category, dice)
+
+    # Joker rules: matching upper category is filled.
+    # Fixed-score categories get their standard values regardless of dice pattern.
+    if category == Category.FULL_HOUSE:
+        return 25
+    elif category == Category.SMALL_STRAIGHT:
+        return 30
+    elif category == Category.LARGE_STRAIGHT:
+        return 40
+    else:
+        # Upper categories, Three/Four of Kind, Chance, Yahtzee -- normal calc.
+        return calculate_score(category, dice)
+
+
 @dataclass(frozen=True)
 class DieState:
     """Pure representation of a single die's state - immutable"""
@@ -361,9 +421,16 @@ def select_category(state: GameState, category: Category) -> GameState:
     if state.scorecard.is_filled(category) or state.game_over or state.rolls_used == 0:
         return state
 
-    # Calculate and set score
-    score = calculate_score(category, state.dice)
+    # Calculate and set score (using context-aware scoring for joker rules)
+    score = calculate_score_in_context(category, state.dice, state.scorecard)
     new_scorecard = state.scorecard.with_score(category, score)
+
+    # Detect bonus Yahtzee: dice are a Yahtzee AND existing scorecard already
+    # has Yahtzee scored with value >= 50
+    if has_yahtzee(state.dice):
+        existing_yahtzee = state.scorecard.scores.get(Category.YAHTZEE)
+        if existing_yahtzee is not None and existing_yahtzee >= 50:
+            new_scorecard.yahtzee_bonus_count += 1
 
     # Check if game is complete
     is_complete = new_scorecard.is_complete()
@@ -517,9 +584,16 @@ def mp_select_category(state: MultiplayerGameState, category: Category) -> Multi
     if state.game_over or state.rolls_used == 0 or current_scorecard.is_filled(category):
         return state
 
-    # Calculate and apply score
-    score = calculate_score(category, state.dice)
+    # Calculate and apply score (using context-aware scoring for joker rules)
+    score = calculate_score_in_context(category, state.dice, current_scorecard)
     new_scorecard = current_scorecard.with_score(category, score)
+
+    # Detect bonus Yahtzee: dice are a Yahtzee AND existing scorecard already
+    # has Yahtzee scored with value >= 50
+    if has_yahtzee(state.dice):
+        existing_yahtzee = current_scorecard.scores.get(Category.YAHTZEE)
+        if existing_yahtzee is not None and existing_yahtzee >= 50:
+            new_scorecard.yahtzee_bonus_count += 1
 
     # Update scorecards tuple
     scorecards_list = list(state.scorecards)

@@ -9,11 +9,11 @@ import sys
 import random
 import math
 from game_engine import (
-    Category, calculate_score, DieState,
+    Category, calculate_score, calculate_score_in_context, DieState,
 )
 from game_coordinator import GameCoordinator, parse_args, _make_strategy
 from sounds import SoundManager
-from score_history import record_score, record_multiplayer_scores, get_high_scores
+from score_history import record_score, record_multiplayer_scores, get_high_scores, get_recent_scores
 
 # Initialize pygame (mixer pre-init for low-latency audio)
 pygame.mixer.pre_init(44100, -16, 1, 512)
@@ -317,6 +317,7 @@ class YahtzeeGame:
         # UI state
         self.category_rects = {}  # Maps Category to pygame.Rect for click detection
         self.hovered_category = None
+        self.showing_history = False
 
     def handle_events(self):
         """Handle pygame events — translates input to coordinator actions"""
@@ -329,7 +330,14 @@ class YahtzeeGame:
                 self.running = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    self.running = False
+                    if self.showing_history:
+                        self.showing_history = False
+                    else:
+                        self.running = False
+                # History overlay (H key)
+                if event.key == pygame.K_h:
+                    if not coord.is_rolling and not game_over:
+                        self.showing_history = not self.showing_history
                 # Speed control (+/- keys) — when any AI is present
                 if coord.has_any_ai and not game_over:
                     if event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
@@ -344,7 +352,7 @@ class YahtzeeGame:
                     if coord.undo():
                         self.animation_dice_values = [die.value for die in coord.dice]
                 # Keyboard shortcuts for human players
-                if is_human_turn and not game_over and not coord.is_rolling:
+                if is_human_turn and not game_over and not coord.is_rolling and not self.showing_history:
                     if event.key == pygame.K_SPACE:
                         coord.roll_dice()
                         if coord.is_rolling:
@@ -355,14 +363,14 @@ class YahtzeeGame:
                         self.sounds.play_click()
             elif event.type == pygame.MOUSEMOTION:
                 self.hovered_category = None
-                if not game_over and is_human_turn:
+                if not game_over and is_human_turn and not self.showing_history:
                     scorecard = coord.scorecard
                     for cat, rect in self.category_rects.items():
                         if rect.collidepoint(event.pos) and not scorecard.is_filled(cat):
                             self.hovered_category = cat
                             break
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1 and is_human_turn:
+                if event.button == 1 and is_human_turn and not self.showing_history:
                     clicked_category = False
                     for cat, rect in self.category_rects.items():
                         if rect.collidepoint(event.pos):
@@ -379,7 +387,7 @@ class YahtzeeGame:
                                 break
 
             # Handle button clicks (only if not currently rolling and human turn)
-            if is_human_turn and self.roll_button.handle_event(event) and not coord.is_rolling:
+            if is_human_turn and not self.showing_history and self.roll_button.handle_event(event) and not coord.is_rolling:
                 coord.roll_dice()
                 if coord.is_rolling:
                     self.sounds.play_roll()
@@ -531,7 +539,7 @@ class YahtzeeGame:
                 score = scorecard.scores[cat]
                 score_color = BLACK
             else:
-                score = calculate_score(cat, dice)
+                score = calculate_score_in_context(cat, dice, scorecard)
                 score_color = VALID_SCORE_COLOR if score > 0 else GRAY
 
             score_text = font.render(str(score), True, score_color)
@@ -585,7 +593,7 @@ class YahtzeeGame:
                 score = scorecard.scores[cat]
                 score_color = BLACK
             else:
-                score = calculate_score(cat, dice)
+                score = calculate_score_in_context(cat, dice, scorecard)
                 score_color = VALID_SCORE_COLOR if score > 0 else GRAY
 
             score_text = font.render(str(score), True, score_color)
@@ -759,6 +767,14 @@ class YahtzeeGame:
         grand_rect = grand_text.get_rect(center=(WINDOW_WIDTH // 2, 430))
         self.screen.blit(grand_text, grand_rect)
 
+        # Yahtzee bonus row (only if any bonuses were earned)
+        if scorecard.yahtzee_bonus_count > 0:
+            bonus_amount = scorecard.yahtzee_bonus_count * 100
+            yb_font = pygame.font.Font(None, 30)
+            yb_text = yb_font.render(f"Yahtzee Bonus: +{bonus_amount}", True, VALID_SCORE_COLOR)
+            yb_rect = yb_text.get_rect(center=(WINDOW_WIDTH // 2, 452))
+            self.screen.blit(yb_text, yb_rect)
+
         # High scores section
         high_scores = get_high_scores(player_type="human", limit=5)
         if high_scores:
@@ -908,6 +924,100 @@ class YahtzeeGame:
                 pygame.draw.rect(self.screen, (255, 245, 200), highlight_rect, border_radius=4)
             self.screen.blit(text, rect)
 
+        # Yahtzee bonus row (only if any player earned bonuses)
+        any_bonuses = any(coord.all_scorecards[i].yahtzee_bonus_count > 0 for i in range(num))
+        if any_bonuses:
+            y += row_height + 2
+            label = cat_font.render("Yahtzee Bonus", True, BLACK)
+            self.screen.blit(label, (grid_x + 8, y))
+            for i in range(num):
+                sc = coord.all_scorecards[i]
+                if sc.yahtzee_bonus_count > 0:
+                    bonus_str = f"+{sc.yahtzee_bonus_count * 100}"
+                    color = VALID_SCORE_COLOR
+                else:
+                    bonus_str = "0"
+                    color = GRAY
+                col_x = grid_x + label_col_width + i * player_col_width
+                text = cat_font.render(bonus_str, True, color)
+                rect = text.get_rect(centerx=col_x + player_col_width // 2, top=y)
+                self.screen.blit(text, rect)
+
+    def draw_history_overlay(self):
+        """Draw semi-transparent overlay showing recent score history."""
+        # Semi-transparent background
+        overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        self.screen.blit(overlay, (0, 0))
+
+        # Panel
+        panel_w, panel_h = 700, 550
+        panel_x = (WINDOW_WIDTH - panel_w) // 2
+        panel_y = (WINDOW_HEIGHT - panel_h) // 2
+        panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
+        pygame.draw.rect(self.screen, (250, 252, 255), panel_rect, border_radius=12)
+        pygame.draw.rect(self.screen, (100, 100, 120), panel_rect, width=2, border_radius=12)
+
+        # Title
+        title_font = pygame.font.Font(None, 48)
+        title = title_font.render("SCORE HISTORY", True, (60, 120, 160))
+        title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, panel_y + 35))
+        self.screen.blit(title, title_rect)
+
+        # Column headers
+        header_font = pygame.font.Font(None, 26)
+        header_y = panel_y + 70
+        headers = [("Rank", panel_x + 40), ("Score", panel_x + 110),
+                   ("Player", panel_x + 210), ("Mode", panel_x + 350),
+                   ("Date", panel_x + 470)]
+        for text, x in headers:
+            surface = header_font.render(text, True, (60, 120, 160))
+            self.screen.blit(surface, (x, header_y))
+
+        # Divider line
+        pygame.draw.line(self.screen, (180, 180, 200),
+                         (panel_x + 20, header_y + 25),
+                         (panel_x + panel_w - 20, header_y + 25))
+
+        # Score entries
+        entries = get_recent_scores(limit=20)
+        entry_font = pygame.font.Font(None, 24)
+        row_y = header_y + 35
+
+        if not entries:
+            no_data = entry_font.render("No scores recorded yet.", True, (150, 150, 150))
+            no_rect = no_data.get_rect(center=(WINDOW_WIDTH // 2, row_y + 40))
+            self.screen.blit(no_data, no_rect)
+        else:
+            for i, entry in enumerate(entries):
+                color = (60, 60, 60) if i % 2 == 0 else (80, 80, 80)
+
+                rank_text = entry_font.render(str(i + 1), True, color)
+                self.screen.blit(rank_text, (panel_x + 50, row_y))
+
+                score_text = entry_font.render(str(entry.get("score", "?")), True, color)
+                self.screen.blit(score_text, (panel_x + 110, row_y))
+
+                player = entry.get("player_type", "?")
+                player_text = entry_font.render(player.capitalize(), True, color)
+                self.screen.blit(player_text, (panel_x + 210, row_y))
+
+                mode = entry.get("mode", "?")
+                mode_text = entry_font.render(mode.capitalize(), True, color)
+                self.screen.blit(mode_text, (panel_x + 350, row_y))
+
+                date = entry.get("date", "")[:10]
+                date_text = entry_font.render(date, True, color)
+                self.screen.blit(date_text, (panel_x + 470, row_y))
+
+                row_y += 22
+
+        # Footer
+        footer_font = pygame.font.Font(None, 24)
+        footer = footer_font.render("Press H or Escape to close", True, (140, 140, 160))
+        footer_rect = footer.get_rect(center=(WINDOW_WIDTH // 2, panel_y + panel_h - 25))
+        self.screen.blit(footer, footer_rect)
+
     def draw(self):
         """Draw everything to the screen"""
         coord = self.coordinator
@@ -1031,6 +1141,10 @@ class YahtzeeGame:
         # Draw turn transition overlay (on top of everything)
         if coord.multiplayer:
             self.draw_turn_transition()
+
+        # Draw history overlay
+        if self.showing_history:
+            self.draw_history_overlay()
 
         # Update display
         pygame.display.flip()
