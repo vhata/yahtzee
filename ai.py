@@ -5,7 +5,7 @@ Contains:
 - Action types (RollAction, ScoreAction)
 - YahtzeeStrategy abstract base class
 - play_turn() and play_game() game loop functions
-- RandomStrategy, GreedyStrategy, ExpectedValueStrategy
+- RandomStrategy, GreedyStrategy, ExpectedValueStrategy, OptimalStrategy
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
@@ -478,3 +478,218 @@ class ExpectedValueStrategy(YahtzeeStrategy):
             Category.CHANCE: 20.0,  # Very costly — always scores something
         }
         return costs.get(cat, 10.0)
+
+
+# ── OptimalStrategy ───────────────────────────────────────────────────────────
+
+from dice_tables import (
+    ALL_COMBOS, COMBO_TO_INDEX, COMBO_PROBS,
+    SCORE_TABLE, TRANSITIONS, CATEGORY_EV,
+    unique_holds,
+)
+
+_ALL_CATEGORIES = list(Category)
+_UPPER_CAT_INDICES = {
+    Category.ONES: 0, Category.TWOS: 1, Category.THREES: 2,
+    Category.FOURS: 3, Category.FIVES: 4, Category.SIXES: 5,
+}
+_UPPER_TARGETS = {
+    Category.ONES: 3, Category.TWOS: 6, Category.THREES: 9,
+    Category.FOURS: 12, Category.FIVES: 15, Category.SIXES: 18,
+}
+
+
+class OptimalStrategy(YahtzeeStrategy):
+    """Exact-probability strategy with two-roll lookahead and opportunity cost.
+
+    Uses precomputed dice tables for exact EV calculations instead of
+    Monte Carlo simulation. Considers:
+    - All possible hold combinations via unique_holds()
+    - Two-roll lookahead (rolls_used==1: look through both remaining rolls)
+    - Opportunity cost: penalizes using a category for less than its EV
+    - Upper bonus probability: adjusts values based on bonus likelihood
+
+    No randomness — purely deterministic given the same game state.
+    """
+
+    def choose_action(self, state: GameState) -> Union[RollAction, ScoreAction]:
+        available = [cat for cat in Category if not state.scorecard.is_filled(cat)]
+        available_indices = [_ALL_CATEGORIES.index(cat) for cat in available]
+
+        if state.rolls_used >= 3:
+            best_cat = self._best_category(state, available, available_indices)
+            score = calculate_score(best_cat, state.dice)
+            return ScoreAction(
+                category=best_cat,
+                reason=f"Must score — {best_cat.value} for {score}")
+
+        combo = tuple(sorted(die.value for die in state.dice))
+        combo_idx = COMBO_TO_INDEX[combo]
+
+        # Build value tables for remaining rolls
+        if state.rolls_used == 2:
+            # 1 roll left: compare scoring now vs one more roll
+            roll_values = self._build_roll3_values(available_indices, state)
+            best_score_cat, best_score_val = self._best_score_now(
+                state, available, available_indices, combo_idx)
+            best_hold, best_hold_ev = self._best_hold_ev(combo, roll_values)
+
+            if best_score_val >= best_hold_ev:
+                score = calculate_score(best_score_cat, state.dice)
+                return ScoreAction(
+                    category=best_score_cat,
+                    reason=f"Scoring {best_score_cat.value} for {score} (roll EV: {best_hold_ev:.1f})")
+            else:
+                hold_indices = self._hold_to_indices(state.dice, best_hold)
+                held_vals = sorted(state.dice[i].value for i in hold_indices)
+                return RollAction(
+                    hold=hold_indices,
+                    reason=f"Holding {held_vals} (EV: {best_hold_ev:.1f} vs score: {best_score_val:.1f})")
+
+        else:
+            # rolls_used == 1: 2 rolls left — two-level lookahead
+            roll3_values = self._build_roll3_values(available_indices, state)
+            roll2_values = self._build_roll2_values(roll3_values)
+
+            best_score_cat, best_score_val = self._best_score_now(
+                state, available, available_indices, combo_idx)
+            best_hold, best_hold_ev = self._best_hold_ev(combo, roll2_values)
+
+            if best_score_val >= best_hold_ev:
+                score = calculate_score(best_score_cat, state.dice)
+                return ScoreAction(
+                    category=best_score_cat,
+                    reason=f"Scoring {best_score_cat.value} for {score} (2-roll EV: {best_hold_ev:.1f})")
+            else:
+                hold_indices = self._hold_to_indices(state.dice, best_hold)
+                held_vals = sorted(state.dice[i].value for i in hold_indices)
+                return RollAction(
+                    hold=hold_indices,
+                    reason=f"Holding {held_vals} (2-roll EV: {best_hold_ev:.1f} vs score: {best_score_val:.1f})")
+
+    def _build_roll3_values(self, available_indices, state):
+        """Build roll3_values[252]: best category value for each combo after final roll."""
+        num_combos = len(ALL_COMBOS)
+        values = [0.0] * num_combos
+        for ci in range(num_combos):
+            best = -1e9
+            for cat_idx in available_indices:
+                cat = _ALL_CATEGORIES[cat_idx]
+                raw = float(SCORE_TABLE[ci][cat_idx])
+                adjusted = raw + self._category_adjustment(state, cat, raw)
+                if adjusted > best:
+                    best = adjusted
+            values[ci] = best
+        return values
+
+    def _build_roll2_values(self, roll3_values):
+        """Build roll2_values[252]: best of score-now or roll-once using roll3_values."""
+        num_combos = len(ALL_COMBOS)
+        values = [0.0] * num_combos
+        for ci, combo in enumerate(ALL_COMBOS):
+            # Best hold EV from one more roll
+            best = roll3_values[ci]  # baseline: don't reroll (hold all)
+            for hold in unique_holds(combo):
+                ev = sum(prob * roll3_values[ri] for ri, prob in TRANSITIONS[hold])
+                if ev > best:
+                    best = ev
+            values[ci] = best
+        return values
+
+    def _best_score_now(self, state, available, available_indices, combo_idx):
+        """Find the best category to score right now and its adjusted value."""
+        best_cat = available[0]
+        best_val = -1e9
+        for i, cat_idx in enumerate(available_indices):
+            cat = available[i]
+            raw = float(SCORE_TABLE[combo_idx][cat_idx])
+            adjusted = raw + self._category_adjustment(state, cat, raw)
+            if adjusted > best_val:
+                best_val = adjusted
+                best_cat = cat
+        return best_cat, best_val
+
+    def _best_hold_ev(self, combo, roll_values):
+        """Find the best hold and its EV given a roll_values lookup."""
+        best_hold = ()
+        best_ev = -1e9
+        for hold in unique_holds(combo):
+            ev = sum(prob * roll_values[ci] for ci, prob in TRANSITIONS[hold])
+            if ev > best_ev:
+                best_ev = ev
+                best_hold = hold
+        return best_hold, best_ev
+
+    def _best_category(self, state, available, available_indices):
+        """Pick the best category when forced to score (rolls_used==3)."""
+        combo = tuple(sorted(die.value for die in state.dice))
+        combo_idx = COMBO_TO_INDEX[combo]
+        best_cat = available[0]
+        best_val = -1e9
+        for i, cat_idx in enumerate(available_indices):
+            cat = available[i]
+            raw = float(SCORE_TABLE[combo_idx][cat_idx])
+            adjusted = raw + self._category_adjustment(state, cat, raw)
+            if adjusted > best_val:
+                best_val = adjusted
+                best_cat = cat
+        return best_cat
+
+    def _category_adjustment(self, state, cat, raw_score):
+        """Compute the adjustment to a raw score for category valuation.
+
+        Includes opportunity cost penalty and upper bonus probability delta.
+        """
+        adjustment = 0.0
+
+        # Opportunity cost: penalize using a category for less than its EV
+        category_ev = CATEGORY_EV[cat]
+        if raw_score > 0:
+            opportunity_cost = max(0.0, category_ev - raw_score)
+            adjustment -= opportunity_cost
+        else:
+            # Zero score: heavy penalty based on the category's expected value
+            adjustment -= (category_ev + 5.0)
+
+        # Upper bonus delta: how does scoring here affect bonus probability?
+        if cat in _UPPER_CATS:
+            face = _UPPER_CATS[cat]
+            target = face * 3  # target contribution for this category
+
+            upper_total = state.scorecard.get_upper_section_total()
+            upper_filled = sum(1 for c in _UPPER_CATS if state.scorecard.is_filled(c))
+            upper_remaining = 6 - upper_filled
+
+            if upper_remaining > 0:
+                needed = 63 - upper_total
+                # Simple linear model: P(bonus) ≈ clamp((expected_remaining - needed) / scale + 0.5)
+                # Expected remaining contribution if each unfilled cat scores its target
+                expected_remaining_before = sum(
+                    _UPPER_TARGETS[c] for c in _UPPER_CATS
+                    if not state.scorecard.is_filled(c)
+                )
+                expected_remaining_after = expected_remaining_before - _UPPER_TARGETS[cat] + raw_score
+
+                # Scale factor: how tight is the bonus race?
+                scale = max(10.0, upper_remaining * 3.0)
+
+                p_before = max(0.0, min(1.0, (expected_remaining_before - needed) / scale + 0.5))
+                p_after = max(0.0, min(1.0, (expected_remaining_after - needed) / scale + 0.5))
+
+                adjustment += (p_after - p_before) * 35.0
+
+        return adjustment
+
+    @staticmethod
+    def _hold_to_indices(dice, held_values):
+        """Convert value-based hold tuple to positional dice indices.
+
+        Matches held values to actual dice positions, handling duplicates correctly.
+        """
+        indices = []
+        remaining = list(held_values)
+        for i, die in enumerate(dice):
+            if die.value in remaining:
+                indices.append(i)
+                remaining.remove(die.value)
+        return tuple(indices)
