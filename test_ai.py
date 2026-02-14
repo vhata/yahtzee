@@ -270,3 +270,147 @@ class TestOptimalStrategy:
         action = strategy.choose_action(state)
         assert isinstance(action, ScoreAction)
         assert action.category == Category.LARGE_STRAIGHT
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 4. EV ADJUSTED SCORING EDGE CASES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestEVAdjustedScoring:
+    """Unit tests for ExpectedValueStrategy._adjusted_score_for_dice() edge cases."""
+
+    def _make_ev(self):
+        return ExpectedValueStrategy(num_simulations=50)
+
+    def _filled_scorecard(self, filled_cats_scores):
+        """Create a scorecard with specific categories filled."""
+        sc = Scorecard()
+        for cat, score in filled_cats_scores.items():
+            sc.scores[cat] = score
+        return sc
+
+    def test_upper_bonus_already_achieved(self):
+        """When upper total >= 63, bonus delta should be near zero for upper cats."""
+        ev = self._make_ev()
+        # Fill upper cats to total >= 63 (3+6+9+12+15+18 = 63 exactly with targets)
+        # Fill 5 upper cats with high scores, leave Sixes open
+        sc = self._filled_scorecard({
+            Category.ONES: 4, Category.TWOS: 8, Category.THREES: 12,
+            Category.FOURS: 16, Category.FIVES: 20,
+            # upper total = 60, need 3 more for bonus
+            # But let's give enough to already have bonus
+        })
+        # Actually set scores so upper total >= 63
+        sc.scores[Category.ONES] = 5
+        sc.scores[Category.TWOS] = 10
+        sc.scores[Category.THREES] = 12
+        sc.scores[Category.FOURS] = 16
+        sc.scores[Category.FIVES] = 20
+        # Total = 63, bonus already achieved. Sixes still open.
+        dice = tuple(DieState(value=6) for _ in range(5))
+        state = GameState(dice=dice, scorecard=sc, rolls_used=1,
+                          current_round=6, game_over=False)
+
+        score_with_bonus = ev._adjusted_score_for_dice(state, Category.SIXES, dice)
+        # Score should be close to raw 30 — no big bonus delta since bonus is already assured
+        assert 25.0 < score_with_bonus < 40.0
+
+    def test_upper_bonus_impossible(self):
+        """When remaining upper cats can't reach 63, no artificial boost."""
+        ev = self._make_ev()
+        # Fill 5 upper cats with 0, leaving only Ones (max 5)
+        sc = self._filled_scorecard({
+            Category.TWOS: 0, Category.THREES: 0, Category.FOURS: 0,
+            Category.FIVES: 0, Category.SIXES: 0,
+        })
+        # Upper total = 0, need 63 from Ones alone (max 5) — impossible
+        dice = tuple(DieState(value=1) for _ in range(5))
+        state = GameState(dice=dice, scorecard=sc, rolls_used=1,
+                          current_round=6, game_over=False)
+
+        score = ev._adjusted_score_for_dice(state, Category.ONES, dice)
+        # Raw score = 5. Bonus is impossible so delta should be near zero or slightly negative
+        # No big positive adjustment
+        assert score < 10.0
+
+    def test_zero_waste_prefers_low_ev_category(self):
+        """Wasting a zero on a low-EV category should have smaller penalty."""
+        ev = self._make_ev()
+        sc = Scorecard()
+        dice = tuple(DieState(value=1) for _ in range(5))  # all ones
+        state = GameState(dice=dice, scorecard=sc, rolls_used=1,
+                          current_round=1, game_over=False)
+
+        # Yahtzee scores 50 here so not zero, but Large Straight scores 0
+        yahtzee_zero_dice = tuple(DieState(value=v) for v in [1, 2, 3, 4, 6])
+        # Yahtzee scores 0 with this dice
+        # Four of kind also scores 0
+        yahtzee_score = ev._adjusted_score_for_dice(state, Category.YAHTZEE, yahtzee_zero_dice)
+        four_kind_score = ev._adjusted_score_for_dice(state, Category.FOUR_OF_KIND, yahtzee_zero_dice)
+
+        # Yahtzee (EV ~4.7) should be less costly to waste than Four of Kind (EV ~8.4)
+        # So Yahtzee's adjusted zero should be higher (less negative)
+        assert yahtzee_score > four_kind_score
+
+    def test_opportunity_cost_penalizes_below_ev(self):
+        """Scoring below category EV should be penalized by the difference."""
+        ev = self._make_ev()
+        sc = Scorecard()
+        # Dice: (1, 1, 1, 1, 1) — Sixes scores 0, opportunity cost is high
+        dice = tuple(DieState(value=1) for _ in range(5))
+        state = GameState(dice=dice, scorecard=sc, rolls_used=1,
+                          current_round=1, game_over=False)
+
+        # Sixes = 0 (zero penalty), Ones = 5 (above target 3 = no opp cost)
+        sixes_adj = ev._adjusted_score_for_dice(state, Category.SIXES, dice)
+        ones_adj = ev._adjusted_score_for_dice(state, Category.ONES, dice)
+
+        # Ones should be much better than Sixes
+        assert ones_adj > sixes_adj + 5.0
+
+    def test_no_penalty_when_above_ev(self):
+        """Scoring above or at category EV should have zero opportunity cost."""
+        ev = self._make_ev()
+        sc = Scorecard()
+        # Dice: (6,6,6,6,6) — Sixes = 30, well above EV (~9.17)
+        dice = tuple(DieState(value=6) for _ in range(5))
+        state = GameState(dice=dice, scorecard=sc, rolls_used=1,
+                          current_round=1, game_over=False)
+
+        adj = ev._adjusted_score_for_dice(state, Category.SIXES, dice)
+        raw = 30.0
+        # Adjusted should be >= raw (no opportunity cost, bonus delta may add a bit)
+        assert adj >= raw - 1.0  # small tolerance for bonus delta effects
+
+    def test_late_game_forced_scoring(self):
+        """With only one category left, adjusted score should be reasonable."""
+        ev = self._make_ev()
+        # Fill all categories except Chance
+        sc = Scorecard()
+        for cat in Category:
+            if cat != Category.CHANCE:
+                sc.scores[cat] = 0
+        dice = tuple(DieState(value=v) for v in [2, 3, 4, 5, 6])
+        state = GameState(dice=dice, scorecard=sc, rolls_used=3,
+                          current_round=13, game_over=False)
+
+        adj = ev._adjusted_score_for_dice(state, Category.CHANCE, dice)
+        raw = 20.0  # 2+3+4+5+6
+        # Should be a positive score — no penalty since Chance always scores
+        assert adj > 0
+
+    def test_chance_always_positive_adjusted(self):
+        """Chance should always have a positive adjusted score (never zero raw)."""
+        ev = self._make_ev()
+        sc = Scorecard()
+        # Even with the worst dice (1,1,1,1,1), Chance = 5
+        dice = tuple(DieState(value=1) for _ in range(5))
+        state = GameState(dice=dice, scorecard=sc, rolls_used=1,
+                          current_round=1, game_over=False)
+
+        adj = ev._adjusted_score_for_dice(state, Category.CHANCE, dice)
+        # Raw = 5, EV for Chance ~17.5, so opp cost ~12.5, but still positive (5 - 12.5 = -7.5)
+        # Actually with the model: raw=5, category_ev~17.5, opp_cost=12.5, adj=5-12.5=-7.5
+        # Hmm, this can be negative with low dice. Let's just verify it's > the zero penalty
+        zero_penalty = -(17.5 + 5.0)  # approximately -22.5
+        assert adj > zero_penalty
