@@ -1,13 +1,13 @@
-.PHONY: play test test-fast bench clean setup
+.PHONY: play test test-all bench clean setup
 
 play:
 	uv run python main.py
 
 test:
-	uv run pytest -v
+	uv run pytest -v -m "not slow"
 
-test-fast:
-	uv run pytest -v --ignore=test_ai.py
+test-all:
+	uv run pytest -v
 
 bench:
 	uv run python ai_benchmark.py --strategy optimal --games 200

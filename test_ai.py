@@ -152,6 +152,7 @@ class TestLegality:
                         state = toggle_die_hold(state, i)
                 state = roll_dice(state)
 
+    @pytest.mark.slow
     def test_stress_100_games(self, strategy):
         """Run 100 games with different seeds — none should error."""
         for seed in range(100):
@@ -176,6 +177,7 @@ def _average_score(strategy, num_games=50, start_seed=0):
     return sum(scores) / len(scores)
 
 
+@pytest.mark.slow
 class TestQuality:
     """Verify that more sophisticated strategies score higher on average."""
 
@@ -215,6 +217,7 @@ class TestQuality:
 class TestOptimalStrategy:
     """Tests specific to the OptimalStrategy."""
 
+    @pytest.mark.slow
     def test_optimal_beats_ev(self):
         """Optimal should average higher than EV(n=50) over 50 games."""
         ev_avg = _average_score(ExpectedValueStrategy(num_simulations=50), num_games=50)
@@ -223,6 +226,7 @@ class TestOptimalStrategy:
             f"Optimal ({optimal_avg:.1f}) should beat EV ({ev_avg:.1f})"
         )
 
+    @pytest.mark.slow
     def test_optimal_deterministic(self):
         """Same seed → same score (no randomness in strategy)."""
         strategy = OptimalStrategy()
