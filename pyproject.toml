@@ -17,3 +17,13 @@ dev = [
 markers = [
     "slow: integration/quality tests that play many full games (~2 min)",
 ]
+
+[tool.coverage.run]
+source = ["."]
+branch = true
+omit = ["main.py", "sounds.py", "test_*.py", "ai_benchmark.py"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+exclude_lines = ["pragma: no cover", "if __name__"]

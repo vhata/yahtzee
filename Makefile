@@ -1,4 +1,4 @@
-.PHONY: play test test-all bench clean setup
+.PHONY: play test test-all bench clean setup coverage
 
 play:
 	uv run python main.py
@@ -14,6 +14,9 @@ bench:
 
 setup:
 	uv sync --extra dev
+
+coverage:
+	uv run pytest -m "not slow" --cov --cov-report=term-missing --cov-report=html
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +
