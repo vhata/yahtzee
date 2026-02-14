@@ -317,6 +317,16 @@ class GreedyStrategy(YahtzeeStrategy):
             reason=f"Nothing scores — sacrificing {available[0].value}")
 
 
+# ── Shared upper section targets (used by EV and Optimal strategies) ───────
+
+from dice_tables import CATEGORY_EV
+
+_UPPER_TARGETS = {
+    Category.ONES: 3, Category.TWOS: 6, Category.THREES: 9,
+    Category.FOURS: 12, Category.FIVES: 15, Category.SIXES: 18,
+}
+
+
 # ── ExpectedValueStrategy ──────────────────────────────────────────────────
 
 class ExpectedValueStrategy(YahtzeeStrategy):
@@ -346,13 +356,19 @@ class ExpectedValueStrategy(YahtzeeStrategy):
         best_now_cat = self._best_category(state)
         best_now_score = self._adjusted_score(state, best_now_cat)
 
-        # Evaluate all 32 hold combinations
+        # Evaluate all 32 hold combinations (with caching for identical held values)
         best_hold = None
         best_hold_ev = -1.0
+        ev_cache = {}  # key: tuple(sorted(held_values)) -> cached EV
 
         for mask in range(32):
             hold = tuple(i for i in range(5) if mask & (1 << i))
-            ev = self._simulate_hold(state, hold, available)
+            cache_key = tuple(sorted(state.dice[i].value for i in hold))
+            if cache_key in ev_cache:
+                ev = ev_cache[cache_key]
+            else:
+                ev = self._simulate_hold(state, hold, available)
+                ev_cache[cache_key] = ev
             if ev > best_hold_ev:
                 best_hold_ev = ev
                 best_hold = hold
@@ -424,67 +440,54 @@ class ExpectedValueStrategy(YahtzeeStrategy):
 
     def _adjusted_score_for_dice(self, state: GameState, cat: Category,
                                   dice: Tuple[DieState, ...]) -> float:
-        """Calculate adjusted score for specific dice, considering bonus progress."""
-        score = float(calculate_score(cat, dice))
+        """Calculate adjusted score using opportunity cost and bonus probability.
 
+        Uses the same principled model as OptimalStrategy:
+        - Opportunity cost: penalizes using a category for less than its EV
+        - Zero score: heavy penalty based on category's expected value
+        - Upper bonus delta: probability-based model of bonus impact
+        """
+        raw_score = float(calculate_score(cat, dice))
+        adjustment = 0.0
+
+        # Opportunity cost: penalize using a category for less than its EV
+        category_ev = CATEGORY_EV[cat]
+        if raw_score > 0:
+            opportunity_cost = max(0.0, category_ev - raw_score)
+            adjustment -= opportunity_cost
+        else:
+            # Zero score: heavy penalty based on the category's expected value
+            adjustment -= (category_ev + 5.0)
+
+        # Upper bonus delta: how does scoring here affect bonus probability?
         if cat in _UPPER_CATS:
-            face = _UPPER_CATS[cat]
-            target = face * 3  # Target for upper bonus (63 total = 3x each)
-
-            # Current upper section progress
             upper_total = state.scorecard.get_upper_section_total()
             upper_filled = sum(1 for c in _UPPER_CATS if state.scorecard.is_filled(c))
             upper_remaining = 6 - upper_filled
 
             if upper_remaining > 0:
-                # How much more we need for the bonus
                 needed = 63 - upper_total
-                avg_needed_per_cat = needed / upper_remaining
+                expected_remaining_before = sum(
+                    _UPPER_TARGETS[c] for c in _UPPER_CATS
+                    if not state.scorecard.is_filled(c)
+                )
+                expected_remaining_after = expected_remaining_before - _UPPER_TARGETS[cat] + raw_score
 
-                actual = calculate_score(cat, dice)
-                surplus = actual - avg_needed_per_cat
+                scale = max(10.0, upper_remaining * 3.0)
 
-                # Reward being on-track for bonus, penalize falling behind
-                if surplus >= 0:
-                    score += min(surplus, 10)  # Cap the bonus at 10
-                else:
-                    score += surplus * 0.5  # Smaller penalty for being behind
+                p_before = max(0.0, min(1.0, (expected_remaining_before - needed) / scale + 0.5))
+                p_after = max(0.0, min(1.0, (expected_remaining_after - needed) / scale + 0.5))
 
-        # Penalize scoring 0 — prefer to waste less valuable categories
-        if score == 0:
-            score = -self._category_waste_cost(cat)
+                adjustment += (p_after - p_before) * 35.0
 
-        return score
-
-    @staticmethod
-    def _category_waste_cost(cat: Category) -> float:
-        """Estimate how costly it is to waste a category with 0 points.
-
-        Higher values mean the category is more valuable and more costly to waste.
-        """
-        costs = {
-            Category.ONES: 1.5,
-            Category.TWOS: 3.0,
-            Category.THREES: 4.5,
-            Category.FOURS: 6.0,
-            Category.FIVES: 7.5,
-            Category.SIXES: 9.0,
-            Category.THREE_OF_KIND: 10.0,
-            Category.FOUR_OF_KIND: 8.0,
-            Category.FULL_HOUSE: 12.0,
-            Category.SMALL_STRAIGHT: 14.0,
-            Category.LARGE_STRAIGHT: 16.0,
-            Category.YAHTZEE: 5.0,  # Low because it's very hard to get
-            Category.CHANCE: 20.0,  # Very costly — always scores something
-        }
-        return costs.get(cat, 10.0)
+        return raw_score + adjustment
 
 
 # ── OptimalStrategy ───────────────────────────────────────────────────────────
 
 from dice_tables import (
     ALL_COMBOS, COMBO_TO_INDEX, COMBO_PROBS,
-    SCORE_TABLE, TRANSITIONS, CATEGORY_EV,
+    SCORE_TABLE, TRANSITIONS,
     unique_holds,
 )
 
@@ -492,10 +495,6 @@ _ALL_CATEGORIES = list(Category)
 _UPPER_CAT_INDICES = {
     Category.ONES: 0, Category.TWOS: 1, Category.THREES: 2,
     Category.FOURS: 3, Category.FIVES: 4, Category.SIXES: 5,
-}
-_UPPER_TARGETS = {
-    Category.ONES: 3, Category.TWOS: 6, Category.THREES: 9,
-    Category.FOURS: 12, Category.FIVES: 15, Category.SIXES: 18,
 }
 
 
