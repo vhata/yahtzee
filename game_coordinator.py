@@ -81,6 +81,9 @@ class GameCoordinator:
         self._pending_state = None
         self._pending_mp_state = None
 
+        # Undo stack — stores snapshots of coordinator state before each human action
+        self._undo_stack = []
+
     # ── Properties (uniform interface for single/multiplayer) ─────────────
 
     @property
@@ -163,6 +166,68 @@ class GameCoordinator:
             return mp_can_roll(self.mp_state)
         return can_roll(self.state)
 
+    # ── Undo ──────────────────────────────────────────────────────────────
+
+    def _push_undo(self):
+        """Save a snapshot before a human action. Only pushes for human turns."""
+        if not self.is_current_player_human:
+            return
+        snapshot = {
+            "state": self.state,
+            "mp_state": self.mp_state,
+            "ai_needs_first_roll": self.ai_needs_first_roll,
+            "ai_timer": self.ai_timer,
+            "ai_reason": self.ai_reason,
+            "is_rolling": self.is_rolling,
+            "roll_timer": self.roll_timer,
+            "ai_showing_holds": self.ai_showing_holds,
+            "ai_hold_timer": self.ai_hold_timer,
+            "turn_transition": self.turn_transition,
+            "turn_transition_timer": getattr(self, "turn_transition_timer", 0),
+        }
+        self._undo_stack.append(snapshot)
+
+    def undo(self):
+        """Undo the last human action. Returns True if successful, False otherwise.
+
+        Blocked when: stack empty, AI turn, rolling, turn transition, game over.
+        """
+        if not self._undo_stack:
+            return False
+        if not self.is_current_player_human:
+            return False
+        if self.is_rolling:
+            return False
+        if self.turn_transition:
+            return False
+        if self.game_over:
+            return False
+
+        snapshot = self._undo_stack.pop()
+        self.state = snapshot["state"]
+        self.mp_state = snapshot["mp_state"]
+        self.ai_needs_first_roll = snapshot["ai_needs_first_roll"]
+        self.ai_timer = snapshot["ai_timer"]
+        self.ai_reason = snapshot["ai_reason"]
+        self.is_rolling = snapshot["is_rolling"]
+        self.roll_timer = snapshot["roll_timer"]
+        self.ai_showing_holds = snapshot["ai_showing_holds"]
+        self.ai_hold_timer = snapshot["ai_hold_timer"]
+        self.turn_transition = snapshot["turn_transition"]
+        self.turn_transition_timer = snapshot["turn_transition_timer"]
+        return True
+
+    @property
+    def can_undo(self):
+        """Whether undo is available right now."""
+        if not self._undo_stack:
+            return False
+        if not self.is_current_player_human:
+            return False
+        if self.is_rolling or self.turn_transition or self.game_over:
+            return False
+        return True
+
     # ── Action methods (called by GUI on input) ──────────────────────────
 
     def roll_dice(self):
@@ -172,6 +237,7 @@ class GameCoordinator:
         """
         if self.multiplayer:
             if not self.is_rolling and mp_can_roll(self.mp_state):
+                self._push_undo()
                 self.is_rolling = True
                 self.roll_timer = 0
                 new_mp_state = mp_roll_dice(self.mp_state)
@@ -179,6 +245,7 @@ class GameCoordinator:
                 self._pending_mp_state = new_mp_state
         else:
             if not self.is_rolling and can_roll(self.state):
+                self._push_undo()
                 self.is_rolling = True
                 self.roll_timer = 0
                 new_state = engine_roll_dice(self.state)
@@ -187,6 +254,7 @@ class GameCoordinator:
 
     def toggle_hold(self, die_index):
         """Toggle hold on a die (for human players)."""
+        self._push_undo()
         if self.multiplayer:
             self.mp_state = mp_toggle_die_hold(self.mp_state, die_index)
         else:
@@ -196,11 +264,13 @@ class GameCoordinator:
         """Score a category (for human players)."""
         if self.multiplayer:
             if mp_can_select_category(self.mp_state, category):
+                self._push_undo()
                 self.mp_state = mp_select_category(self.mp_state, category)
                 self._on_turn_scored()
                 return True
         else:
             if can_select_category(self.state, category):
+                self._push_undo()
                 self.state = engine_select_category(self.state, category)
                 return True
         return False
@@ -220,6 +290,7 @@ class GameCoordinator:
         self.ai_hold_timer = 0
         self.is_rolling = False
         self.roll_timer = 0
+        self._undo_stack = []
 
     def change_speed(self, direction):
         """Change AI speed. direction=+1 for faster, -1 for slower.
@@ -325,7 +396,8 @@ class GameCoordinator:
 
     def _on_turn_scored(self):
         """Called after any player (human or AI) scores in multiplayer.
-        Triggers turn transition and resets AI state for the next player."""
+        Triggers turn transition and resets AI state for the next player.
+        Clears undo stack so players can't undo across turn boundaries."""
         if not self.multiplayer:
             return
         self.ai_needs_first_roll = True
@@ -333,6 +405,7 @@ class GameCoordinator:
         self.ai_reason = ""
         self.ai_showing_holds = False
         self.ai_hold_timer = 0
+        self._undo_stack = []
         if not self.mp_state.game_over:
             self.turn_transition = True
             self.turn_transition_timer = 0

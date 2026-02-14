@@ -321,6 +321,10 @@ class YahtzeeGame:
                         coord.change_speed(+1)
                     elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
                         coord.change_speed(-1)
+                # Undo (Ctrl+Z) for human players
+                if event.key == pygame.K_z and (event.mod & pygame.KMOD_CTRL or event.mod & pygame.KMOD_META):
+                    if coord.undo():
+                        self.animation_dice_values = [die.value for die in coord.dice]
                 # Keyboard shortcuts for human players
                 if is_human_turn and not game_over and not coord.is_rolling:
                     if event.key == pygame.K_SPACE:

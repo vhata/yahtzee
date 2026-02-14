@@ -571,6 +571,141 @@ class TestMultiplayerFlow:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# 5b. UNDO
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestUndo:
+    """Undo stack for human players."""
+
+    def test_undo_roll(self):
+        """Undo after a roll restores pre-roll state."""
+        random.seed(42)
+        c = GameCoordinator(speed="fast")
+        assert c.rolls_used == 0
+        c.roll_dice()
+        tick_n(c, 20)
+        assert c.rolls_used == 1
+        result = c.undo()
+        assert result is True
+        assert c.rolls_used == 0
+
+    def test_undo_hold(self):
+        """Undo after toggling hold restores previous hold state."""
+        random.seed(42)
+        c = GameCoordinator(speed="fast")
+        c.roll_dice()
+        tick_n(c, 20)
+        assert c.dice[0].held is False
+        c.toggle_hold(0)
+        assert c.dice[0].held is True
+        c.undo()
+        assert c.dice[0].held is False
+
+    def test_undo_score_restores_round(self):
+        """Undo after scoring restores the previous round."""
+        random.seed(42)
+        c = GameCoordinator(speed="fast")
+        c.roll_dice()
+        tick_n(c, 20)
+        assert c.current_round == 1
+        c.select_category(Category.CHANCE)
+        assert c.current_round == 2
+        c.undo()
+        assert c.current_round == 1
+        assert c.rolls_used == 1  # back to post-roll state
+
+    def test_multiple_undo_steps(self):
+        """Multiple undos walk back through the stack."""
+        random.seed(42)
+        c = GameCoordinator(speed="fast")
+        c.roll_dice()
+        tick_n(c, 20)
+        c.toggle_hold(0)
+        c.toggle_hold(1)
+        assert c.dice[0].held is True
+        assert c.dice[1].held is True
+        c.undo()  # undo hold(1)
+        assert c.dice[0].held is True
+        assert c.dice[1].held is False
+        c.undo()  # undo hold(0)
+        assert c.dice[0].held is False
+
+    def test_empty_stack_returns_false(self):
+        """Undo with empty stack returns False."""
+        c = GameCoordinator()
+        assert c.undo() is False
+
+    def test_undo_disabled_during_rolling(self):
+        """Cannot undo while dice are rolling."""
+        c = GameCoordinator()
+        c.roll_dice()
+        assert c.is_rolling is True
+        assert c.undo() is False
+
+    def test_undo_disabled_for_ai(self):
+        """Cannot undo during AI turns."""
+        random.seed(42)
+        c = GameCoordinator(ai_strategy=GreedyStrategy(), speed="fast")
+        # AI will push nothing since it's not human
+        tick_until(c, lambda c: c.rolls_used >= 1)
+        assert c.undo() is False
+
+    def test_undo_disabled_during_transition(self):
+        """Cannot undo during turn transition in multiplayer."""
+        random.seed(42)
+        players = [("P1", None), ("P2", None)]
+        c = GameCoordinator(players=players, speed="fast")
+        # Initial turn transition
+        assert c.turn_transition is True
+        assert c.undo() is False
+
+    def test_undo_disabled_when_game_over(self):
+        """Cannot undo when game is over."""
+        random.seed(42)
+        c = GameCoordinator(speed="fast")
+        categories = list(Category)
+        for cat in categories:
+            c.roll_dice()
+            tick_n(c, 20)
+            c.select_category(cat)
+        assert c.game_over is True
+        assert c.undo() is False
+
+    def test_undo_clears_on_reset(self):
+        """Reset clears the undo stack."""
+        random.seed(42)
+        c = GameCoordinator(speed="fast")
+        c.roll_dice()
+        tick_n(c, 20)
+        assert len(c._undo_stack) > 0
+        c.reset_game()
+        assert len(c._undo_stack) == 0
+
+    def test_undo_clears_on_multiplayer_turn_transition(self):
+        """Undo stack clears when a player scores in multiplayer (turn boundary)."""
+        random.seed(42)
+        players = [("P1", None), ("P2", None)]
+        c = GameCoordinator(players=players, speed="fast")
+        tick_n(c, 45)  # clear transition
+        c.roll_dice()
+        tick_n(c, 20)
+        assert len(c._undo_stack) > 0
+        c.select_category(Category.CHANCE)
+        assert len(c._undo_stack) == 0
+
+    def test_can_undo_property(self):
+        """can_undo reflects undo availability."""
+        random.seed(42)
+        c = GameCoordinator(speed="fast")
+        assert c.can_undo is False
+        c.roll_dice()
+        tick_n(c, 20)
+        assert c.can_undo is True
+        c.undo()
+        assert c.can_undo is False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # 6. SPEED CONTROL
 # ═══════════════════════════════════════════════════════════════════════════════
 
