@@ -84,6 +84,9 @@ class GameCoordinator:
         # Undo stack — stores snapshots of coordinator state before each human action
         self._undo_stack = []
 
+        # Score animation signal — set when a category is scored, consumed by GUI
+        self.last_scored_category = None
+
     # ── Properties (uniform interface for single/multiplayer) ─────────────
 
     @property
@@ -266,12 +269,14 @@ class GameCoordinator:
             if mp_can_select_category(self.mp_state, category):
                 self._push_undo()
                 self.mp_state = mp_select_category(self.mp_state, category)
+                self.last_scored_category = category
                 self._on_turn_scored()
                 return True
         else:
             if can_select_category(self.state, category):
                 self._push_undo()
                 self.state = engine_select_category(self.state, category)
+                self.last_scored_category = category
                 return True
         return False
 
@@ -291,6 +296,7 @@ class GameCoordinator:
         self.is_rolling = False
         self.roll_timer = 0
         self._undo_stack = []
+        self.last_scored_category = None
 
     def change_speed(self, direction):
         """Change AI speed. direction=+1 for faster, -1 for slower.
@@ -368,6 +374,7 @@ class GameCoordinator:
             self.ai_reason = action.reason
 
             if isinstance(action, ScoreAction):
+                self.last_scored_category = action.category
                 if self.multiplayer:
                     self.mp_state = mp_select_category(self.mp_state, action.category)
                     self._on_turn_scored()

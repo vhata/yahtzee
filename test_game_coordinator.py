@@ -871,7 +871,48 @@ class TestCLIParsing:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 9. SMOKE RENDERING TESTS
+# 9. SCORE ANIMATION SIGNAL
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestScoreAnimation:
+    """last_scored_category signal for GUI flash animation."""
+
+    def test_initially_none(self):
+        """last_scored_category is None at start."""
+        c = GameCoordinator()
+        assert c.last_scored_category is None
+
+    def test_set_on_human_score(self):
+        """last_scored_category is set when human scores."""
+        random.seed(42)
+        c = GameCoordinator(speed="fast")
+        c.roll_dice()
+        tick_n(c, 20)
+        c.select_category(Category.CHANCE)
+        assert c.last_scored_category == Category.CHANCE
+
+    def test_set_on_ai_score(self):
+        """last_scored_category is set when AI scores."""
+        random.seed(42)
+        c = GameCoordinator(ai_strategy=GreedyStrategy(), speed="fast")
+        tick_until(c, lambda c: c.last_scored_category is not None)
+        assert c.last_scored_category is not None
+        assert isinstance(c.last_scored_category, Category)
+
+    def test_reset_clears_signal(self):
+        """reset_game() clears last_scored_category."""
+        random.seed(42)
+        c = GameCoordinator(speed="fast")
+        c.roll_dice()
+        tick_n(c, 20)
+        c.select_category(Category.CHANCE)
+        assert c.last_scored_category is not None
+        c.reset_game()
+        assert c.last_scored_category is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 10. SMOKE RENDERING TESTS
 #    Verify that YahtzeeGame.draw() doesn't crash in headless pygame.
 # ═══════════════════════════════════════════════════════════════════════════════
 

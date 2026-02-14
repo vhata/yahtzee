@@ -39,6 +39,7 @@ SECTION_HEADER_COLOR = (60, 120, 160)
 VALID_SCORE_COLOR = (40, 180, 80)
 HOVER_COLOR = (220, 240, 255)
 IN_CUP_COLOR = (180, 185, 195)  # muted gray for unrolled dice
+FLASH_HIGHLIGHT = (255, 240, 180)  # warm gold for score flash
 PLAYER_COLORS = [
     (70, 130, 180),   # Steel blue (Player 1)
     (180, 80, 80),    # Red (Player 2)
@@ -305,6 +306,11 @@ class YahtzeeGame:
         self.sounds = SoundManager()
         self._game_over_sound_played = False
 
+        # Score flash animation
+        self.score_flash_category = None
+        self.score_flash_timer = 0
+        self.score_flash_duration = 30  # 0.5 sec at 60 FPS
+
         # UI state
         self.category_rects = {}  # Maps Category to pygame.Rect for click detection
         self.hovered_category = None
@@ -417,6 +423,18 @@ class YahtzeeGame:
             self.sounds.play_fanfare()
             self._game_over_sound_played = True
 
+        # Score flash: consume signal from coordinator
+        if coord.last_scored_category is not None:
+            self.score_flash_category = coord.last_scored_category
+            self.score_flash_timer = 0
+            coord.last_scored_category = None
+
+        # Advance flash timer
+        if self.score_flash_category is not None:
+            self.score_flash_timer += 1
+            if self.score_flash_timer >= self.score_flash_duration:
+                self.score_flash_category = None
+
     def draw_scorecard(self):
         """Draw the scorecard UI on the right side of screen"""
         coord = self.coordinator
@@ -463,7 +481,16 @@ class YahtzeeGame:
             cat_rect = pygame.Rect(scorecard_x - 5, y - 2, col_width + 50, row_height)
             self.category_rects[cat] = cat_rect
 
-            if not scorecard.is_filled(cat) and self.hovered_category == cat:
+            # Score flash highlight (sine-wave pulse)
+            if cat == self.score_flash_category:
+                t = self.score_flash_timer / self.score_flash_duration
+                alpha = (1 + math.sin(t * 4 * math.pi - math.pi / 2)) / 2
+                flash_color = tuple(
+                    int(SCORECARD_BG[c] + (FLASH_HIGHLIGHT[c] - SCORECARD_BG[c]) * alpha)
+                    for c in range(3)
+                )
+                pygame.draw.rect(self.screen, flash_color, cat_rect, border_radius=5)
+            elif not scorecard.is_filled(cat) and self.hovered_category == cat:
                 pygame.draw.rect(self.screen, HOVER_COLOR, cat_rect, border_radius=5)
 
             name_text = font.render(cat.value, True, BLACK)
@@ -506,7 +533,16 @@ class YahtzeeGame:
             cat_rect = pygame.Rect(scorecard_x - 5, y - 2, col_width + 50, row_height)
             self.category_rects[cat] = cat_rect
 
-            if not scorecard.is_filled(cat) and self.hovered_category == cat:
+            # Score flash highlight (sine-wave pulse)
+            if cat == self.score_flash_category:
+                t = self.score_flash_timer / self.score_flash_duration
+                alpha = (1 + math.sin(t * 4 * math.pi - math.pi / 2)) / 2
+                flash_color = tuple(
+                    int(SCORECARD_BG[c] + (FLASH_HIGHLIGHT[c] - SCORECARD_BG[c]) * alpha)
+                    for c in range(3)
+                )
+                pygame.draw.rect(self.screen, flash_color, cat_rect, border_radius=5)
+            elif not scorecard.is_filled(cat) and self.hovered_category == cat:
                 pygame.draw.rect(self.screen, HOVER_COLOR, cat_rect, border_radius=5)
 
             name_text = font.render(cat.value, True, BLACK)
