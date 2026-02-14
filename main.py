@@ -732,68 +732,133 @@ class YahtzeeGame:
         self.screen.blit(grand_text, grand_rect)
 
     def _draw_game_over_multiplayer(self):
-        """Draw multiplayer game over with ranked standings."""
+        """Draw multiplayer game over with full per-category scorecard grid."""
         coord = self.coordinator
+        num = coord.num_players
+
         # Game Over title
-        title_font = pygame.font.Font(None, 72)
+        title_font = pygame.font.Font(None, 64)
         title_text = title_font.render("GAME OVER!", True, BLACK)
-        title_rect = title_text.get_rect(center=(WINDOW_WIDTH // 2, 80))
+        title_rect = title_text.get_rect(center=(WINDOW_WIDTH // 2, 45))
         self.screen.blit(title_text, title_rect)
 
-        # Build standings: list of (player_index, name, strategy, score) sorted by score desc
-        standings = []
-        for i, (name, strategy) in enumerate(coord.player_configs):
-            score = coord.all_scorecards[i].get_grand_total()
-            standings.append((i, name, strategy, score))
-        standings.sort(key=lambda x: x[3], reverse=True)
+        # Find winner
+        totals = [coord.all_scorecards[i].get_grand_total() for i in range(num)]
+        winner_idx = max(range(num), key=lambda i: totals[i])
+        winner_name = coord.player_configs[winner_idx][0]
+        winner_color = PLAYER_COLORS[winner_idx % len(PLAYER_COLORS)]
 
-        # Rank labels
-        rank_labels = ["1st", "2nd", "3rd", "4th"]
+        winner_font = pygame.font.Font(None, 36)
+        winner_text = winner_font.render(f"{winner_name} wins!", True, winner_color)
+        winner_rect = winner_text.get_rect(center=(WINDOW_WIDTH // 2, 80))
+        self.screen.blit(winner_text, winner_rect)
 
-        # Draw standings
-        rank_font = pygame.font.Font(None, 44)
-        name_font = pygame.font.Font(None, 40)
-        score_font = pygame.font.Font(None, 44)
-        detail_font = pygame.font.Font(None, 26)
+        # Grid layout
+        label_col_width = 140
+        player_col_width = min(130, (WINDOW_WIDTH - label_col_width - 80) // num)
+        grid_width = label_col_width + player_col_width * num
+        grid_x = (WINDOW_WIDTH - grid_width) // 2
+        row_height = 22
+        grid_y = 105
 
-        y = 160
-        for rank, (idx, name, strategy, score) in enumerate(standings):
-            color = PLAYER_COLORS[idx % len(PLAYER_COLORS)]
+        cat_font = pygame.font.Font(None, 21)
+        header_font = pygame.font.Font(None, 22)
+        section_font = pygame.font.Font(None, 22)
+        total_font = pygame.font.Font(None, 24)
 
-            # Draw rank
-            rank_text = rank_font.render(rank_labels[rank], True, BLACK)
-            self.screen.blit(rank_text, (150, y))
+        upper_cats = [Category.ONES, Category.TWOS, Category.THREES,
+                      Category.FOURS, Category.FIVES, Category.SIXES]
+        lower_cats = [Category.THREE_OF_KIND, Category.FOUR_OF_KIND,
+                      Category.FULL_HOUSE, Category.SMALL_STRAIGHT,
+                      Category.LARGE_STRAIGHT, Category.YAHTZEE, Category.CHANCE]
 
-            # Draw player name
-            if strategy is not None:
-                ai_name = strategy.__class__.__name__.replace("Strategy", "")
-                label = f"{name} ({ai_name})"
-            else:
-                label = f"{name} (Human)"
-            name_text = name_font.render(label, True, color)
-            self.screen.blit(name_text, (220, y))
+        y = grid_y
 
-            # Draw score
-            score_text = score_font.render(str(score), True, BLACK)
-            score_rect = score_text.get_rect(right=820, top=y)
-            self.screen.blit(score_text, score_rect)
+        # Player name headers
+        for i in range(num):
+            name = coord.player_configs[i][0]
+            color = PLAYER_COLORS[i % len(PLAYER_COLORS)]
+            col_x = grid_x + label_col_width + i * player_col_width
+            name_text = header_font.render(name, True, color)
+            name_rect = name_text.get_rect(centerx=col_x + player_col_width // 2, top=y)
+            self.screen.blit(name_text, name_rect)
+        y += row_height + 4
 
-            # Draw score breakdown details
-            sc = coord.all_scorecards[idx]
-            upper = sc.get_upper_section_total()
-            bonus = sc.get_upper_section_bonus()
-            lower = sc.get_lower_section_total()
-            detail = f"Upper: {upper}  Bonus: {bonus}  Lower: {lower}"
-            detail_text = detail_font.render(detail, True, GRAY)
-            self.screen.blit(detail_text, (220, y + 34))
+        # --- Upper section ---
+        section_text = section_font.render("UPPER SECTION", True, SECTION_HEADER_COLOR)
+        self.screen.blit(section_text, (grid_x, y))
+        y += row_height
 
-            y += 80
+        for cat in upper_cats:
+            label = cat_font.render(cat.value, True, BLACK)
+            self.screen.blit(label, (grid_x + 8, y))
+            for i in range(num):
+                sc = coord.all_scorecards[i]
+                score = sc.scores.get(cat, 0)
+                col_x = grid_x + label_col_width + i * player_col_width
+                score_text = cat_font.render(str(score), True, BLACK)
+                score_rect = score_text.get_rect(centerx=col_x + player_col_width // 2, top=y)
+                self.screen.blit(score_text, score_rect)
+            y += row_height
 
-            # Winner highlight — gold bar behind first place
-            if rank == 0:
-                crown_font = pygame.font.Font(None, 36)
-                crown_text = crown_font.render("WINNER!", True, (200, 160, 30))
-                self.screen.blit(crown_text, (70, y - 80))
+        # Upper subtotal + bonus
+        y += 2
+        label = cat_font.render("Subtotal", True, BLACK)
+        self.screen.blit(label, (grid_x + 8, y))
+        for i in range(num):
+            sc = coord.all_scorecards[i]
+            val = sc.get_upper_section_total()
+            col_x = grid_x + label_col_width + i * player_col_width
+            text = cat_font.render(str(val), True, BLACK)
+            rect = text.get_rect(centerx=col_x + player_col_width // 2, top=y)
+            self.screen.blit(text, rect)
+        y += row_height
+
+        label = cat_font.render("Bonus", True, BLACK)
+        self.screen.blit(label, (grid_x + 8, y))
+        for i in range(num):
+            sc = coord.all_scorecards[i]
+            val = sc.get_upper_section_bonus()
+            col_x = grid_x + label_col_width + i * player_col_width
+            color = VALID_SCORE_COLOR if val > 0 else GRAY
+            text = cat_font.render(str(val), True, color)
+            rect = text.get_rect(centerx=col_x + player_col_width // 2, top=y)
+            self.screen.blit(text, rect)
+        y += row_height + 4
+
+        # --- Lower section ---
+        section_text = section_font.render("LOWER SECTION", True, SECTION_HEADER_COLOR)
+        self.screen.blit(section_text, (grid_x, y))
+        y += row_height
+
+        for cat in lower_cats:
+            label = cat_font.render(cat.value, True, BLACK)
+            self.screen.blit(label, (grid_x + 8, y))
+            for i in range(num):
+                sc = coord.all_scorecards[i]
+                score = sc.scores.get(cat, 0)
+                col_x = grid_x + label_col_width + i * player_col_width
+                score_text = cat_font.render(str(score), True, BLACK)
+                score_rect = score_text.get_rect(centerx=col_x + player_col_width // 2, top=y)
+                self.screen.blit(score_text, score_rect)
+            y += row_height
+
+        # Grand total
+        y += 6
+        label = total_font.render("GRAND TOTAL", True, BLACK)
+        self.screen.blit(label, (grid_x, y))
+        for i in range(num):
+            val = totals[i]
+            col_x = grid_x + label_col_width + i * player_col_width
+            color = PLAYER_COLORS[i % len(PLAYER_COLORS)]
+            is_winner = (i == winner_idx)
+            text = total_font.render(str(val), True, color)
+            rect = text.get_rect(centerx=col_x + player_col_width // 2, top=y)
+            if is_winner:
+                # Highlight winner's total
+                highlight_rect = rect.inflate(16, 4)
+                pygame.draw.rect(self.screen, (255, 245, 200), highlight_rect, border_radius=4)
+            self.screen.blit(text, rect)
 
     def draw(self):
         """Draw everything to the screen"""
