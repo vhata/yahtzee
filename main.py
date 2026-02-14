@@ -12,8 +12,10 @@ from game_engine import (
     Category, calculate_score, DieState,
 )
 from game_coordinator import GameCoordinator, parse_args, _make_strategy
+from sounds import SoundManager
 
-# Initialize pygame
+# Initialize pygame (mixer pre-init for low-latency audio)
+pygame.mixer.pre_init(44100, -16, 1, 512)
 pygame.init()
 
 # Constants
@@ -299,6 +301,10 @@ class YahtzeeGame:
         # Animation state (GUI concern only — randomized display values during roll)
         self.animation_dice_values = [die.value for die in self.coordinator.dice]
 
+        # Sound
+        self.sounds = SoundManager()
+        self._game_over_sound_played = False
+
         # UI state
         self.category_rects = {}  # Maps Category to pygame.Rect for click detection
         self.hovered_category = None
@@ -321,6 +327,9 @@ class YahtzeeGame:
                         coord.change_speed(+1)
                     elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
                         coord.change_speed(-1)
+                # Sound toggle (M key)
+                if event.key == pygame.K_m:
+                    self.sounds.toggle()
                 # Undo (Ctrl+Z) for human players
                 if event.key == pygame.K_z and (event.mod & pygame.KMOD_CTRL or event.mod & pygame.KMOD_META):
                     if coord.undo():
@@ -329,9 +338,12 @@ class YahtzeeGame:
                 if is_human_turn and not game_over and not coord.is_rolling:
                     if event.key == pygame.K_SPACE:
                         coord.roll_dice()
+                        if coord.is_rolling:
+                            self.sounds.play_roll()
                     elif pygame.K_1 <= event.key <= pygame.K_5:
                         die_index = event.key - pygame.K_1
                         coord.toggle_hold(die_index)
+                        self.sounds.play_click()
             elif event.type == pygame.MOUSEMOTION:
                 self.hovered_category = None
                 if not game_over and is_human_turn:
@@ -346,6 +358,7 @@ class YahtzeeGame:
                     for cat, rect in self.category_rects.items():
                         if rect.collidepoint(event.pos):
                             if coord.select_category(cat):
+                                self.sounds.play_score()
                                 clicked_category = True
                                 break
 
@@ -353,19 +366,28 @@ class YahtzeeGame:
                         for i, sprite in enumerate(self.dice_sprites):
                             if sprite.contains_point(event.pos):
                                 coord.toggle_hold(i)
+                                self.sounds.play_click()
                                 break
 
             # Handle button clicks (only if not currently rolling and human turn)
             if is_human_turn and self.roll_button.handle_event(event) and not coord.is_rolling:
                 coord.roll_dice()
+                if coord.is_rolling:
+                    self.sounds.play_roll()
 
             # Handle play again button (only when game is over)
             if game_over and self.play_again_button.handle_event(event):
                 coord.reset_game()
+                self._game_over_sound_played = False
 
     def update(self):
         """Update animation display values, then tick the coordinator."""
         coord = self.coordinator
+
+        # Snapshot state before tick for detecting AI transitions
+        was_rolling = coord.is_rolling
+        round_before = coord.current_round
+        was_game_over = coord.game_over
 
         # During rolling, randomize display values for unheld dice (GUI-only animation)
         if coord.is_rolling:
@@ -379,6 +401,21 @@ class YahtzeeGame:
         # After tick, if rolling just finished, sync animation values to final
         if not coord.is_rolling:
             self.animation_dice_values = [die.value for die in coord.dice]
+
+        # AI sound triggers: detect transitions caused by tick()
+        if not coord.is_current_player_human:
+            # AI started rolling
+            if coord.is_rolling and not was_rolling:
+                self.sounds.play_roll()
+            # AI scored (round advanced or game ended)
+            if (coord.current_round != round_before or
+                    (coord.game_over and not was_game_over)):
+                self.sounds.play_score()
+
+        # Game over fanfare (once, for any mode)
+        if coord.game_over and not self._game_over_sound_played:
+            self.sounds.play_fanfare()
+            self._game_over_sound_played = True
 
     def draw_scorecard(self):
         """Draw the scorecard UI on the right side of screen"""
