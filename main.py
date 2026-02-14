@@ -40,6 +40,7 @@ VALID_SCORE_COLOR = (40, 180, 80)
 HOVER_COLOR = (220, 240, 255)
 IN_CUP_COLOR = (180, 185, 195)  # muted gray for unrolled dice
 FLASH_HIGHLIGHT = (255, 240, 180)  # warm gold for score flash
+AI_CHOICE_HIGHLIGHT = (180, 220, 255)  # light blue for AI score choice preview
 PLAYER_COLORS = [
     (70, 130, 180),   # Steel blue (Player 1)
     (180, 80, 80),    # Red (Player 2)
@@ -490,6 +491,8 @@ class YahtzeeGame:
                     for c in range(3)
                 )
                 pygame.draw.rect(self.screen, flash_color, cat_rect, border_radius=5)
+            elif coord.ai_showing_score_choice and cat == coord.ai_score_choice_category:
+                pygame.draw.rect(self.screen, AI_CHOICE_HIGHLIGHT, cat_rect, border_radius=5)
             elif not scorecard.is_filled(cat) and self.hovered_category == cat:
                 pygame.draw.rect(self.screen, HOVER_COLOR, cat_rect, border_radius=5)
 
@@ -542,6 +545,8 @@ class YahtzeeGame:
                     for c in range(3)
                 )
                 pygame.draw.rect(self.screen, flash_color, cat_rect, border_radius=5)
+            elif coord.ai_showing_score_choice and cat == coord.ai_score_choice_category:
+                pygame.draw.rect(self.screen, AI_CHOICE_HIGHLIGHT, cat_rect, border_radius=5)
             elif not scorecard.is_filled(cat) and self.hovered_category == cat:
                 pygame.draw.rect(self.screen, HOVER_COLOR, cat_rect, border_radius=5)
 

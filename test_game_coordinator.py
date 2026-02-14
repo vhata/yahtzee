@@ -913,6 +913,68 @@ class TestScoreAnimation:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# 9b. AI SCORE CHOICE PREVIEW
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestAIScoreChoicePreview:
+    """AI briefly highlights the chosen category before committing the score."""
+
+    def test_ai_enters_score_choice_preview(self):
+        """When AI decides to score, ai_showing_score_choice is set True."""
+        random.seed(42)
+        c = GameCoordinator(ai_strategy=GreedyStrategy(), speed="fast")
+        # Tick until AI enters score choice preview
+        for _ in range(50000):
+            c.tick()
+            if c.ai_showing_score_choice:
+                break
+        else:
+            pytest.fail("AI never entered score choice preview")
+        assert c.ai_score_choice_category is not None
+        assert isinstance(c.ai_score_choice_category, Category)
+
+    def test_score_committed_after_preview_duration(self):
+        """After ai_hold_show_duration ticks, the score is committed and preview clears."""
+        random.seed(42)
+        c = GameCoordinator(ai_strategy=GreedyStrategy(), speed="fast")
+        # Tick until AI enters score choice preview
+        for _ in range(50000):
+            c.tick()
+            if c.ai_showing_score_choice:
+                break
+        chosen_cat = c.ai_score_choice_category
+        round_before = c.current_round
+        # Tick through preview duration minus 1
+        tick_n(c, c.ai_hold_show_duration - 1)
+        assert c.ai_showing_score_choice is True  # still showing
+        c.tick()  # one more tick to complete
+        assert c.ai_showing_score_choice is False
+        assert c.ai_score_choice_category is None
+        # Score should have been committed
+        assert c.scorecard.is_filled(chosen_cat) or c.current_round > round_before
+
+    def test_reset_clears_score_choice_state(self):
+        """reset_game() clears all score choice preview state."""
+        random.seed(42)
+        c = GameCoordinator(ai_strategy=GreedyStrategy(), speed="fast")
+        for _ in range(50000):
+            c.tick()
+            if c.ai_showing_score_choice:
+                break
+        c.reset_game()
+        assert c.ai_showing_score_choice is False
+        assert c.ai_score_choice_category is None
+        assert c.ai_score_choice_timer == 0
+
+    def test_ai_still_completes_full_game(self):
+        """AI still plays a complete game with the score choice preview."""
+        random.seed(42)
+        c = GameCoordinator(ai_strategy=GreedyStrategy(), speed="fast")
+        tick_until(c, lambda c: c.game_over)
+        assert c.scorecard.is_complete()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # 10. INTEGRATION TESTS
 #    Verify that GameCoordinator's AI tick loop produces the same final score
 #    as the headless play_game() function, given the same random seed.

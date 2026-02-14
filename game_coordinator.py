@@ -87,6 +87,12 @@ class GameCoordinator:
         # Score animation signal — set when a category is scored, consumed by GUI
         self.last_scored_category = None
 
+        # AI score choice preview — briefly highlight the chosen category before committing
+        self.ai_showing_score_choice = False
+        self.ai_score_choice_category = None
+        self._ai_score_choice_action = None
+        self.ai_score_choice_timer = 0
+
     # ── Properties (uniform interface for single/multiplayer) ─────────────
 
     @property
@@ -187,6 +193,9 @@ class GameCoordinator:
             "ai_hold_timer": self.ai_hold_timer,
             "turn_transition": self.turn_transition,
             "turn_transition_timer": getattr(self, "turn_transition_timer", 0),
+            "ai_showing_score_choice": self.ai_showing_score_choice,
+            "ai_score_choice_category": self.ai_score_choice_category,
+            "ai_score_choice_timer": self.ai_score_choice_timer,
         }
         self._undo_stack.append(snapshot)
 
@@ -218,6 +227,9 @@ class GameCoordinator:
         self.ai_hold_timer = snapshot["ai_hold_timer"]
         self.turn_transition = snapshot["turn_transition"]
         self.turn_transition_timer = snapshot["turn_transition_timer"]
+        self.ai_showing_score_choice = snapshot["ai_showing_score_choice"]
+        self.ai_score_choice_category = snapshot["ai_score_choice_category"]
+        self.ai_score_choice_timer = snapshot["ai_score_choice_timer"]
         return True
 
     @property
@@ -297,6 +309,10 @@ class GameCoordinator:
         self.roll_timer = 0
         self._undo_stack = []
         self.last_scored_category = None
+        self.ai_showing_score_choice = False
+        self.ai_score_choice_category = None
+        self._ai_score_choice_action = None
+        self.ai_score_choice_timer = 0
 
     def change_speed(self, direction):
         """Change AI speed. direction=+1 for faster, -1 for slower.
@@ -345,6 +361,26 @@ class GameCoordinator:
                 self.roll_dice()
             return
 
+        # AI score choice preview — briefly highlight the chosen category before committing
+        if self.ai_showing_score_choice:
+            self.ai_score_choice_timer += 1
+            if self.ai_score_choice_timer >= self.ai_hold_show_duration:
+                action = self._ai_score_choice_action
+                self.last_scored_category = action.category
+                if self.multiplayer:
+                    self.mp_state = mp_select_category(self.mp_state, action.category)
+                    self.ai_showing_score_choice = False
+                    self.ai_score_choice_category = None
+                    self._ai_score_choice_action = None
+                    self._on_turn_scored()
+                else:
+                    self.state = engine_select_category(self.state, action.category)
+                    self.ai_needs_first_roll = True
+                    self.ai_showing_score_choice = False
+                    self.ai_score_choice_category = None
+                    self._ai_score_choice_action = None
+            return
+
         # AI controller — paces decisions with a timer
         current_strategy = self.current_ai_strategy
         if current_strategy and not self.game_over:
@@ -374,13 +410,10 @@ class GameCoordinator:
             self.ai_reason = action.reason
 
             if isinstance(action, ScoreAction):
-                self.last_scored_category = action.category
-                if self.multiplayer:
-                    self.mp_state = mp_select_category(self.mp_state, action.category)
-                    self._on_turn_scored()
-                else:
-                    self.state = engine_select_category(self.state, action.category)
-                    self.ai_needs_first_roll = True
+                self.ai_showing_score_choice = True
+                self.ai_score_choice_category = action.category
+                self._ai_score_choice_action = action
+                self.ai_score_choice_timer = 0
             elif isinstance(action, RollAction):
                 # Apply holds: set each die to match the strategy's request
                 if self.multiplayer:
@@ -412,6 +445,10 @@ class GameCoordinator:
         self.ai_reason = ""
         self.ai_showing_holds = False
         self.ai_hold_timer = 0
+        self.ai_showing_score_choice = False
+        self.ai_score_choice_category = None
+        self._ai_score_choice_action = None
+        self.ai_score_choice_timer = 0
         self._undo_stack = []
         if not self.mp_state.game_over:
             self.turn_transition = True
