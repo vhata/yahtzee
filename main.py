@@ -961,6 +961,8 @@ def main():
                 ai_strategy = _make_strategy("random")
             elif args.ev:
                 ai_strategy = _make_strategy("ev")
+            elif args.optimal:
+                ai_strategy = _make_strategy("optimal")
             else:
                 ai_strategy = _make_strategy("greedy")
 

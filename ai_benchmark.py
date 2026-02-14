@@ -9,7 +9,7 @@ import random
 import time
 
 from ai import (
-    RandomStrategy, GreedyStrategy, ExpectedValueStrategy,
+    RandomStrategy, GreedyStrategy, ExpectedValueStrategy, OptimalStrategy,
     play_game,
 )
 
@@ -48,6 +48,7 @@ def main():
         ("Random", RandomStrategy()),
         ("Greedy", GreedyStrategy()),
         (f"ExpectedValue(n={args.ev_sims})", ExpectedValueStrategy(num_simulations=args.ev_sims)),
+        ("Optimal", OptimalStrategy()),
     ]
 
     print(f"Yahtzee AI Benchmark — {args.games} games per strategy")

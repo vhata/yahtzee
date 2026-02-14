@@ -21,7 +21,7 @@ from game_engine import (
 )
 from ai import (
     RollAction, ScoreAction,
-    RandomStrategy, GreedyStrategy, ExpectedValueStrategy,
+    RandomStrategy, GreedyStrategy, ExpectedValueStrategy, OptimalStrategy,
 )
 
 # Speed presets for AI playback: (ai_delay, roll_duration, hold_show_duration) in frames
@@ -428,6 +428,8 @@ def _make_strategy(token):
         return GreedyStrategy()
     elif token == "ev":
         return ExpectedValueStrategy()
+    elif token == "optimal":
+        return OptimalStrategy()
 
 
 def parse_args(argv=None):
@@ -445,8 +447,9 @@ def parse_args(argv=None):
     parser.add_argument("--random", action="store_true", help="Use Random strategy (with --ai)")
     parser.add_argument("--greedy", action="store_true", help="Use Greedy strategy (with --ai)")
     parser.add_argument("--ev", action="store_true", help="Use ExpectedValue strategy (with --ai)")
+    parser.add_argument("--optimal", action="store_true", help="Use Optimal strategy (with --ai)")
     # Multiplayer mode
-    parser.add_argument("--players", nargs="+", choices=["human", "random", "greedy", "ev"],
+    parser.add_argument("--players", nargs="+", choices=["human", "random", "greedy", "ev", "optimal"],
                         metavar="TYPE",
                         help="Multiplayer: list player types (human, random, greedy, ev)")
     parser.add_argument("--speed", choices=["slow", "normal", "fast"], default="normal",
