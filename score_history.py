@@ -102,3 +102,17 @@ def get_high_scores(player_type=None, limit=10, path=None):
 def get_all_scores(path=None):
     """Return all score entries."""
     return _load_scores(path)
+
+
+def get_recent_scores(limit=20, path=None):
+    """Return most recent score entries, newest first.
+
+    Args:
+        limit: maximum number of entries to return (default 20).
+
+    Returns:
+        List of score entry dicts, most recent first.
+    """
+    entries = _load_scores(path)
+    entries.reverse()  # newest first (entries are stored chronologically)
+    return entries[:limit]

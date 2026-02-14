@@ -143,3 +143,34 @@ def test_entry_has_date(tmp_path):
     assert "date" in entry
     assert isinstance(entry["date"], str)
     assert len(entry["date"]) > 0
+
+
+# ── 6. Recent Scores ──────────────────────────────────────────────────────
+
+from score_history import get_recent_scores
+
+
+def test_recent_scores_newest_first(tmp_path):
+    """get_recent_scores returns entries most-recent first."""
+    path = tmp_path / "scores.json"
+    record_score(100, player_type="human", path=path)
+    record_score(200, player_type="human", path=path)
+    record_score(300, player_type="human", path=path)
+
+    recent = get_recent_scores(path=path)
+    scores = [e["score"] for e in recent]
+    assert scores == [300, 200, 100]
+
+
+def test_recent_scores_respects_limit(tmp_path):
+    """get_recent_scores(limit=N) returns at most N entries."""
+    path = tmp_path / "scores.json"
+    for s in range(10):
+        record_score(s * 10, player_type="human", path=path)
+
+    recent = get_recent_scores(limit=3, path=path)
+    assert len(recent) == 3
+    # Should be the 3 most recent (highest numbered scores since we added them in order)
+    assert recent[0]["score"] == 90
+    assert recent[1]["score"] == 80
+    assert recent[2]["score"] == 70
