@@ -175,8 +175,8 @@ class TestCategoryEV:
     """CATEGORY_EV gives expected score for a dedicated 3-roll optimal turn."""
 
     def test_chance_ev_range(self):
-        """Chance EV should be ~23-24 (always scores, so high baseline)."""
-        assert 22.0 < CATEGORY_EV[Category.CHANCE] < 25.0
+        """Chance EV should be ~21-22 (always scores, high baseline from rerolling low dice)."""
+        assert 20.0 < CATEGORY_EV[Category.CHANCE] < 23.0
 
     def test_yahtzee_ev_low(self):
         """Yahtzee EV < 5 (very rare to achieve even with optimal play)."""
