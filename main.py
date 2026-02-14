@@ -13,6 +13,7 @@ from game_engine import (
 )
 from game_coordinator import GameCoordinator, parse_args, _make_strategy
 from sounds import SoundManager
+from score_history import record_score, record_multiplayer_scores, get_high_scores
 
 # Initialize pygame (mixer pre-init for low-latency audio)
 pygame.mixer.pre_init(44100, -16, 1, 512)
@@ -297,7 +298,7 @@ class YahtzeeGame:
         play_again_width = 200
         play_again_height = 60
         play_again_x = (WINDOW_WIDTH - play_again_width) // 2
-        play_again_y = 550
+        play_again_y = 620
         self.play_again_button = Button(play_again_x, play_again_y, play_again_width, play_again_height, "PLAY AGAIN", 40)
 
         # Animation state (GUI concern only — randomized display values during roll)
@@ -306,6 +307,7 @@ class YahtzeeGame:
         # Sound
         self.sounds = SoundManager()
         self._game_over_sound_played = False
+        self._scores_saved = False
 
         # Score flash animation
         self.score_flash_category = None
@@ -384,8 +386,33 @@ class YahtzeeGame:
 
             # Handle play again button (only when game is over)
             if game_over and self.play_again_button.handle_event(event):
+                self._save_scores()
                 coord.reset_game()
                 self._game_over_sound_played = False
+                self._scores_saved = False
+
+    def _save_scores(self):
+        """Persist game results to disk. Called once before reset_game()."""
+        if self._scores_saved:
+            return
+        self._scores_saved = True
+        coord = self.coordinator
+
+        if coord.multiplayer:
+            results = []
+            for i in range(coord.num_players):
+                name, strategy = coord.player_configs[i]
+                player_type = "human" if strategy is None else strategy.__class__.__name__.replace("Strategy", "").lower()
+                score = coord.all_scorecards[i].get_grand_total()
+                results.append({"name": name, "score": score, "player_type": player_type})
+            record_multiplayer_scores(results)
+        else:
+            score = coord.scorecard.get_grand_total()
+            if coord.ai_strategy:
+                player_type = coord.ai_strategy.__class__.__name__.replace("Strategy", "").lower()
+            else:
+                player_type = "human"
+            record_score(score, player_type=player_type)
 
     def update(self):
         """Update animation display values, then tick the coordinator."""
@@ -419,10 +446,11 @@ class YahtzeeGame:
                     (coord.game_over and not was_game_over)):
                 self.sounds.play_score()
 
-        # Game over fanfare (once, for any mode)
+        # Game over fanfare and score saving (once, for any mode)
         if coord.game_over and not self._game_over_sound_played:
             self.sounds.play_fanfare()
             self._game_over_sound_played = True
+            self._save_scores()
 
         # Score flash: consume signal from coordinator
         if coord.last_scored_category is not None:
@@ -728,8 +756,28 @@ class YahtzeeGame:
         # Grand total centered below both columns
         grand_font = pygame.font.Font(None, 40)
         grand_text = grand_font.render(f"GRAND TOTAL: {final_score}", True, BLACK)
-        grand_rect = grand_text.get_rect(center=(WINDOW_WIDTH // 2, 500))
+        grand_rect = grand_text.get_rect(center=(WINDOW_WIDTH // 2, 430))
         self.screen.blit(grand_text, grand_rect)
+
+        # High scores section
+        high_scores = get_high_scores(player_type="human", limit=5)
+        if high_scores:
+            hs_font = pygame.font.Font(None, 28)
+            hs_label = hs_font.render("Top Human Scores", True, SECTION_HEADER_COLOR)
+            hs_rect = hs_label.get_rect(center=(WINDOW_WIDTH // 2, 468))
+            self.screen.blit(hs_label, hs_rect)
+
+            hs_entry_font = pygame.font.Font(None, 24)
+            for rank, entry in enumerate(high_scores):
+                hs_y = 490 + rank * 22
+                score_val = entry.get("score", 0)
+                date_str = entry.get("date", "")[:10]  # Just the date part
+                is_current = (score_val == final_score and rank == 0)
+                color = (180, 80, 80) if is_current else (80, 80, 80)
+                label = f"{rank + 1}. {score_val}   ({date_str})"
+                hs_text = hs_entry_font.render(label, True, color)
+                hs_text_rect = hs_text.get_rect(center=(WINDOW_WIDTH // 2, hs_y))
+                self.screen.blit(hs_text, hs_text_rect)
 
     def _draw_game_over_multiplayer(self):
         """Draw multiplayer game over with full per-category scorecard grid."""
