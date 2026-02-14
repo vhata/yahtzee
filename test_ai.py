@@ -10,12 +10,13 @@ import pytest
 import random
 
 from game_engine import (
-    Category, GameState, DieState,
+    Category, GameState, DieState, Scorecard,
     roll_dice, can_roll, can_select_category, calculate_score,
 )
 from ai import (
     RollAction, ScoreAction,
     YahtzeeStrategy, RandomStrategy, GreedyStrategy, ExpectedValueStrategy,
+    OptimalStrategy,
     play_turn, play_game,
 )
 
@@ -24,12 +25,13 @@ from ai import (
 
 def all_strategies():
     """Return instances of all available strategies for parametrized tests."""
-    return [RandomStrategy(), GreedyStrategy(), ExpectedValueStrategy(num_simulations=50)]
+    return [RandomStrategy(), GreedyStrategy(), ExpectedValueStrategy(num_simulations=50),
+            OptimalStrategy()]
 
 
 def strategy_ids():
     """Return readable names for parametrize IDs."""
-    return ["Random", "Greedy", "EV"]
+    return ["Random", "Greedy", "EV", "Optimal"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -204,3 +206,67 @@ class TestQuality:
             assert score1 == score2, (
                 f"{strategy.__class__.__name__} not deterministic: {score1} != {score2}"
             )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 3. OPTIMAL STRATEGY TESTS — quality and behavior
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestOptimalStrategy:
+    """Tests specific to the OptimalStrategy."""
+
+    def test_optimal_beats_ev(self):
+        """Optimal should average higher than EV(n=50) over 50 games."""
+        ev_avg = _average_score(ExpectedValueStrategy(num_simulations=50), num_games=50)
+        optimal_avg = _average_score(OptimalStrategy(), num_games=50)
+        assert optimal_avg > ev_avg, (
+            f"Optimal ({optimal_avg:.1f}) should beat EV ({ev_avg:.1f})"
+        )
+
+    def test_optimal_deterministic(self):
+        """Same seed → same score (no randomness in strategy)."""
+        strategy = OptimalStrategy()
+        random.seed(12345)
+        score1 = play_game(strategy).scorecard.get_grand_total()
+        random.seed(12345)
+        score2 = play_game(strategy).scorecard.get_grand_total()
+        assert score1 == score2
+
+    def test_optimal_prefers_yahtzee(self):
+        """With dice (3,3,3,3,3) and Yahtzee available, scores Yahtzee."""
+        dice = tuple(DieState(value=3) for _ in range(5))
+        state = GameState(
+            dice=dice, scorecard=Scorecard(), rolls_used=1,
+            current_round=1, game_over=False,
+        )
+        strategy = OptimalStrategy()
+        action = strategy.choose_action(state)
+        assert isinstance(action, ScoreAction)
+        assert action.category == Category.YAHTZEE
+
+    def test_optimal_holds_four_of_kind(self):
+        """With dice (4,4,4,4,2) and rolls left, holds the four 4s."""
+        dice = (DieState(value=4), DieState(value=4), DieState(value=4),
+                DieState(value=4), DieState(value=2))
+        state = GameState(
+            dice=dice, scorecard=Scorecard(), rolls_used=1,
+            current_round=1, game_over=False,
+        )
+        strategy = OptimalStrategy()
+        action = strategy.choose_action(state)
+        assert isinstance(action, RollAction)
+        # Should hold the four 4s (indices 0,1,2,3) and reroll the 2 (index 4)
+        held_values = sorted(dice[i].value for i in action.hold)
+        assert held_values == [4, 4, 4, 4]
+
+    def test_optimal_takes_large_straight(self):
+        """With (1,2,3,4,5) and Large Straight available, scores it."""
+        dice = tuple(DieState(value=v) for v in [1, 2, 3, 4, 5])
+        state = GameState(
+            dice=dice, scorecard=Scorecard(), rolls_used=1,
+            current_round=1, game_over=False,
+        )
+        strategy = OptimalStrategy()
+        action = strategy.choose_action(state)
+        assert isinstance(action, ScoreAction)
+        assert action.category == Category.LARGE_STRAIGHT
