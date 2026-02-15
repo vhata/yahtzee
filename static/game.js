@@ -364,6 +364,21 @@ function renderGameOver(s) {
             const pct = (score / OPTIMAL_EXPECTED * 100).toFixed(0);
             html += `<p class="pct-optimal">${pct}% of optimal play (${OPTIMAL_EXPECTED} avg)</p>`;
         }
+
+        if (s.category_breakdown) {
+            html += '<table class="breakdown-table">';
+            html += '<tr><th>Category</th><th>Score</th><th>Avg</th><th>Diff</th></tr>';
+            for (const cat of CATEGORY_ORDER) {
+                const b = s.category_breakdown[cat];
+                if (!b) continue;
+                const diff = b.scored - b.expected;
+                const diffStr = diff >= 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1);
+                const diffClass = diff >= 0 ? "diff-pos" : "diff-neg";
+                html += `<tr><td>${cat}</td><td>${b.scored}</td><td>${b.expected}</td>`;
+                html += `<td class="${diffClass}">${diffStr}</td></tr>`;
+            }
+            html += '</table>';
+        }
     }
 
     html += '<p style="margin-top: 16px; color: var(--text-dim);">Press R for replay</p>';

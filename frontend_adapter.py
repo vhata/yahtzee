@@ -12,6 +12,7 @@ and input translation frontend-specific.
 from abc import ABC, abstractmethod
 
 from game_engine import Category, calculate_score_in_context
+from dice_tables import CATEGORY_EV
 from score_history import (
     record_score, record_multiplayer_scores,
     get_high_scores, get_recent_scores_filtered,
@@ -560,6 +561,18 @@ class FrontendAdapter:
                     "rolls": dice_strs,
                 })
 
+        # Category breakdown for game-over analysis (single player only)
+        category_breakdown = None
+        if coord.game_over and not coord.multiplayer:
+            category_breakdown = {}
+            for cat in Category:
+                scored = scorecard.scores.get(cat, 0)
+                expected = round(CATEGORY_EV.get(cat, 0), 1)
+                category_breakdown[cat.value] = {
+                    "scored": scored,
+                    "expected": expected,
+                }
+
         return {
             "dice": dice,
             "rolls_used": coord.rolls_used,
@@ -599,4 +612,5 @@ class FrontendAdapter:
             "dark_mode": self.dark_mode,
             "sound_enabled": self.sound.enabled,
             "turn_log": turn_log,
+            "category_breakdown": category_breakdown,
         }

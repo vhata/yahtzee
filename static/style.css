@@ -196,6 +196,11 @@ body {
 #gameover-content .winner { font-size: 1.4em; font-weight: bold; margin-bottom: 12px; }
 #gameover-content table { margin: 12px auto; border-collapse: collapse; }
 #gameover-content table td { padding: 4px 16px; }
+.breakdown-table { font-size: 0.85em; margin-top: 16px; }
+.breakdown-table th { text-align: left; padding: 3px 10px; color: var(--header-color); border-bottom: 1px solid var(--panel-border); }
+.breakdown-table td { padding: 3px 10px; }
+.diff-pos { color: #28a745; font-weight: 500; }
+.diff-neg { color: #dc3545; font-weight: 500; }
 
 /* ── Toolbar ─────────────────────────────────────────────────────────────── */
 
