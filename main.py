@@ -79,6 +79,9 @@ DARK_PANEL_BORDER = (70, 72, 85)
 DARK_SHADOW_COLOR = (20, 20, 25, 50)
 DARK_BORDER_COLOR = (80, 80, 90)
 
+# Optimal strategy benchmark average (empirical from 200-game runs)
+OPTIMAL_EXPECTED_TOTAL = 223.0
+
 # Category tooltips for new players
 CATEGORY_TOOLTIPS = {
     Category.ONES: "Sum of all dice showing 1",
@@ -1094,33 +1097,53 @@ class YahtzeeGame:
         self.screen.blit(grand_text, grand_rect)
 
         # Yahtzee bonus row (only if any bonuses were earned)
+        stats_y = 452
         if scorecard.yahtzee_bonus_count > 0:
             bonus_amount = scorecard.yahtzee_bonus_count * 100
             yb_font = self._font(30)
             yb_text = yb_font.render(f"Yahtzee Bonus: +{bonus_amount}", True, self._valid_color())
-            yb_rect = yb_text.get_rect(center=(WINDOW_WIDTH // 2, 452))
+            yb_rect = yb_text.get_rect(center=(WINDOW_WIDTH // 2, stats_y))
             self.screen.blit(yb_text, yb_rect)
+            stats_y += 24
+
+        # Performance vs optimal (human players only, not AI spectator)
+        is_human_game = coord.ai_strategy is None
+        if is_human_game:
+            pct = final_score / OPTIMAL_EXPECTED_TOTAL * 100
+            pct_font = self._font(28)
+            if pct >= 100:
+                pct_color = self._valid_color()
+            elif pct >= 70:
+                pct_color = header_color
+            else:
+                pct_color = self._gray_color()
+            pct_label = f"{pct:.0f}% of optimal play ({int(OPTIMAL_EXPECTED_TOTAL)} avg)"
+            pct_text = pct_font.render(pct_label, True, pct_color)
+            pct_rect = pct_text.get_rect(center=(WINDOW_WIDTH // 2, stats_y))
+            self.screen.blit(pct_text, pct_rect)
+            stats_y += 24
 
         # High scores section
         high_scores = get_high_scores(player_type="human", limit=5)
         if high_scores:
             hs_font = self._font(28)
             hs_label = hs_font.render("Top Human Scores", True, header_color)
-            hs_rect = hs_label.get_rect(center=(WINDOW_WIDTH // 2, 468))
+            hs_rect = hs_label.get_rect(center=(WINDOW_WIDTH // 2, stats_y))
             self.screen.blit(hs_label, hs_rect)
+            stats_y += 22
 
             hs_entry_font = self._font(24)
             dim_color = (160, 160, 170) if self.dark_mode else (80, 80, 80)
             for rank, entry in enumerate(high_scores):
-                hs_y = 490 + rank * 22
                 score_val = entry.get("score", 0)
                 date_str = entry.get("date", "")[:10]  # Just the date part
                 is_current = (score_val == final_score and rank == 0)
                 color = (180, 80, 80) if is_current else dim_color
                 label = f"{rank + 1}. {score_val}   ({date_str})"
                 hs_text = hs_entry_font.render(label, True, color)
-                hs_text_rect = hs_text.get_rect(center=(WINDOW_WIDTH // 2, hs_y))
+                hs_text_rect = hs_text.get_rect(center=(WINDOW_WIDTH // 2, stats_y))
                 self.screen.blit(hs_text, hs_text_rect)
+                stats_y += 22
 
     def _draw_game_over_multiplayer(self):
         """Draw multiplayer game over with full per-category scorecard grid."""
@@ -1251,6 +1274,31 @@ class YahtzeeGame:
                 highlight_rect = rect.inflate(16, 4)
                 pygame.draw.rect(self.screen, self._winner_highlight(), highlight_rect, border_radius=4)
             self.screen.blit(text, rect)
+
+        # % of optimal for human players
+        any_human = any(s is None for _, s in coord.player_configs)
+        if any_human:
+            y += row_height
+            label = cat_font.render("% Optimal", True, text_color)
+            self.screen.blit(label, (grid_x + 8, y))
+            for i in range(num):
+                _, strategy = coord.player_configs[i]
+                if strategy is None:
+                    pct = totals[i] / OPTIMAL_EXPECTED_TOTAL * 100
+                    pct_str = f"{pct:.0f}%"
+                    if pct >= 100:
+                        color = self._valid_color()
+                    elif pct >= 70:
+                        color = header_color
+                    else:
+                        color = self._gray_color()
+                else:
+                    pct_str = ""
+                    color = self._gray_color()
+                col_x = grid_x + label_col_width + i * player_col_width
+                text = cat_font.render(pct_str, True, color)
+                rect = text.get_rect(centerx=col_x + player_col_width // 2, top=y)
+                self.screen.blit(text, rect)
 
         # Yahtzee bonus row (only if any player earned bonuses)
         any_bonuses = any(coord.all_scorecards[i].yahtzee_bonus_count > 0 for i in range(num))
