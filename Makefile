@@ -21,10 +21,10 @@ bench:
 setup:
 	uv sync --extra dev
 
-setup-tui:
+setup-tui: setup
 	uv pip install "textual>=0.50.0"
 
-setup-web:
+setup-web: setup
 	uv pip install "flask>=3.0.0" "flask-sock>=0.7.0"
 
 setup-all:
