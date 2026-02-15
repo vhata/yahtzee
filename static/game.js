@@ -425,7 +425,10 @@ function playTone(freq, duration, volume) {
 // the element can be destroyed between mousedown and mouseup. Event
 // delegation on the stable parent containers avoids this.
 
-document.getElementById("dice-container").addEventListener("click", (e) => {
+// Use mousedown (not click) because click requires mousedown+mouseup on the
+// same element, but the DOM is rebuilt between frames so the mousedown target
+// may be gone by the time mouseup fires, silently dropping the click.
+document.getElementById("dice-container").addEventListener("mousedown", (e) => {
     const dieEl = e.target.closest(".die");
     if (!dieEl || !state) return;
     const idx = parseInt(dieEl.dataset.dieIndex);
@@ -435,7 +438,7 @@ document.getElementById("dice-container").addEventListener("click", (e) => {
     }
 });
 
-document.getElementById("scorecard-body").addEventListener("click", (e) => {
+document.getElementById("scorecard-body").addEventListener("mousedown", (e) => {
     const tr = e.target.closest("tr[data-category]");
     if (!tr || !state) return;
     const cat = tr.dataset.category;
