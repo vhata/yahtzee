@@ -90,6 +90,7 @@ body {
 }
 #roll-btn:hover:not(:disabled) { background: var(--button-hover); }
 #roll-btn:disabled { background: var(--button-disabled); cursor: not-allowed; }
+#roll-btn:focus-visible { outline: 3px solid var(--header-color); outline-offset: 2px; }
 
 #roll-status { text-align: center; font-size: 1.1em; margin-bottom: 6px; }
 #ai-reason { text-align: center; font-size: 0.9em; color: var(--text-dim); min-height: 20px; }
@@ -131,7 +132,7 @@ body {
 
 #scorecard tr.category-row { cursor: pointer; transition: background 0.15s; height: 44px; }
 #scorecard tr.category-row:hover { background: var(--hover-bg); }
-#scorecard tr.category-row.selected { background: var(--hover-bg); font-weight: bold; }
+#scorecard tr.category-row.selected { background: var(--hover-bg); font-weight: bold; outline: 2px solid var(--header-color); outline-offset: -2px; }
 #scorecard tr.category-row.filled { cursor: default; }
 #scorecard tr.category-row.filled:hover { background: transparent; }
 
@@ -179,6 +180,7 @@ body {
 }
 .confirm-buttons button:first-child { background: #e74c3c; color: white; }
 .confirm-buttons button:last-child { background: #95a5a6; color: white; }
+.confirm-buttons button:focus-visible { outline: 3px solid var(--header-color); outline-offset: 2px; }
 
 #play-again-btn {
     display: block; margin: 20px auto 0; padding: 12px 40px; font-size: 1.1em;
@@ -186,6 +188,7 @@ body {
     border-radius: 8px; cursor: pointer;
 }
 #play-again-btn:hover { background: var(--button-hover); }
+#play-again-btn:focus-visible { outline: 3px solid var(--header-color); outline-offset: 2px; }
 
 #gameover-content { text-align: center; }
 #gameover-content .final-score { font-size: 1.8em; font-weight: bold; color: var(--header-color); }
@@ -206,6 +209,7 @@ body {
     font-size: 16px; display: flex; align-items: center; justify-content: center;
 }
 #toolbar button:hover { background: var(--hover-bg); }
+#toolbar button:focus-visible { outline: 3px solid var(--header-color); outline-offset: 2px; }
 
 /* ── History overlay ─────────────────────────────────────────────────────── */
 

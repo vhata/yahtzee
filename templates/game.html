@@ -21,12 +21,12 @@
             <div id="dice-area">
                 <div id="dice-container"></div>
                 <button id="roll-btn" onclick="sendAction('roll')">ROLL</button>
-                <div id="roll-status"></div>
-                <div id="ai-reason"></div>
+                <div id="roll-status" aria-live="polite"></div>
+                <div id="ai-reason" aria-live="polite"></div>
                 <div id="turn-log"></div>
             </div>
             <div id="scorecard-area">
-                <table id="scorecard">
+                <table id="scorecard" aria-label="Scorecard">
                     <thead><tr><th>Category</th><th>Score</th></tr></thead>
                     <tbody id="scorecard-body"></tbody>
                 </table>
@@ -34,9 +34,9 @@
         </main>
 
         <!-- Overlays -->
-        <div id="overlay-help" class="overlay hidden">
+        <div id="overlay-help" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="help-title">
             <div class="overlay-panel">
-                <h2>CONTROLS</h2>
+                <h2 id="help-title">CONTROLS</h2>
                 <table class="controls-table">
                     <tr><td>Space</td><td>Roll dice</td></tr>
                     <tr><td>1-5</td><td>Toggle die hold</td></tr>
@@ -57,24 +57,24 @@
             </div>
         </div>
 
-        <div id="overlay-history" class="overlay hidden">
+        <div id="overlay-history" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="history-title">
             <div class="overlay-panel">
-                <h2>SCORE HISTORY</h2>
+                <h2 id="history-title">SCORE HISTORY</h2>
                 <div id="history-filters"></div>
                 <div id="history-content"></div>
                 <p class="overlay-footer">H or Esc to close</p>
             </div>
         </div>
 
-        <div id="overlay-replay" class="overlay hidden">
+        <div id="overlay-replay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="replay-title">
             <div class="overlay-panel">
-                <h2>GAME REPLAY</h2>
+                <h2 id="replay-title">GAME REPLAY</h2>
                 <div id="replay-content"></div>
                 <p class="overlay-footer">R or Esc to close</p>
             </div>
         </div>
 
-        <div id="overlay-confirm" class="overlay hidden">
+        <div id="overlay-confirm" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-text">
             <div class="overlay-panel overlay-small">
                 <h3 id="confirm-text"></h3>
                 <p>Y / Enter to confirm, N / Esc to cancel</p>
@@ -85,15 +85,15 @@
             </div>
         </div>
 
-        <div id="overlay-gameover" class="overlay hidden">
+        <div id="overlay-gameover" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="gameover-title">
             <div class="overlay-panel">
-                <h2>GAME OVER!</h2>
+                <h2 id="gameover-title">GAME OVER!</h2>
                 <div id="gameover-content"></div>
                 <button id="play-again-btn" onclick="sendAction('reset')">PLAY AGAIN</button>
             </div>
         </div>
 
-        <div id="overlay-transition" class="overlay hidden">
+        <div id="overlay-transition" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="transition-text">
             <div class="overlay-panel overlay-small">
                 <h2 id="transition-text"></h2>
             </div>
@@ -101,11 +101,11 @@
 
         <!-- Toolbar -->
         <div id="toolbar">
-            <button onclick="sendAction('toggle_help')" title="Help (?)">?</button>
-            <button onclick="sendAction('toggle_dark_mode')" title="Dark mode (D)">🌙</button>
-            <button onclick="sendAction('toggle_colorblind')" title="Colorblind (C)">👁</button>
-            <button onclick="sendAction('toggle_sound')" title="Sound (S)" id="sound-btn">🔊</button>
-            <button onclick="sendAction('undo')" title="Undo (Ctrl+Z)">↩</button>
+            <button onclick="sendAction('toggle_help')" title="Help (?)" aria-label="Help">?</button>
+            <button onclick="sendAction('toggle_dark_mode')" title="Dark mode (D)" aria-label="Dark mode">🌙</button>
+            <button onclick="sendAction('toggle_colorblind')" title="Colorblind (C)" aria-label="Colorblind mode">👁</button>
+            <button onclick="sendAction('toggle_sound')" title="Sound (S)" aria-label="Toggle sound" id="sound-btn">🔊</button>
+            <button onclick="sendAction('undo')" title="Undo (Ctrl+Z)" aria-label="Undo">↩</button>
         </div>
     </div>
 

@@ -121,10 +121,12 @@ function renderDice(s) {
         const el = document.createElement("div");
         el.className = "die";
         el.dataset.dieIndex = i;  // For event delegation
+        el.setAttribute("role", "button");
 
         if (s.rolls_used === 0 && !s.is_rolling) {
             el.classList.add("in-cup");
             el.innerHTML = '<span class="cup-text">?</span>';
+            el.setAttribute("aria-label", `Die ${i + 1}: not rolled`);
         } else {
             let val = die.value;
             if (s.is_rolling && !die.held) {
@@ -138,6 +140,8 @@ function renderDice(s) {
             if (die.held) {
                 el.classList.add("held");
             }
+            const heldText = die.held ? ", held" : "";
+            el.setAttribute("aria-label", `Die ${i + 1}: value ${die.value}${heldText}`);
 
             // Bounce animation on roll end
             if (prevState && prevState.is_rolling && !s.is_rolling && !die.held) {

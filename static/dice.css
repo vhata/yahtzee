@@ -17,6 +17,7 @@
 }
 
 .die:hover { transform: translateY(-2px); box-shadow: 2px 4px 8px rgba(0,0,0,0.15); }
+.die:focus-visible { outline: 3px solid var(--header-color); outline-offset: 2px; }
 
 /* Held state */
 .die.held {
