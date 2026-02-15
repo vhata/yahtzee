@@ -79,6 +79,19 @@ body {
 #roll-status { text-align: center; font-size: 1.1em; margin-bottom: 6px; }
 #ai-reason { text-align: center; font-size: 0.9em; color: var(--text-dim); min-height: 20px; }
 
+/* ── Turn log (multiplayer) ──────────────────────────────────────────────── */
+
+#turn-log { margin-top: 12px; }
+.turn-log-header { font-size: 0.85em; font-weight: bold; color: var(--header-color); margin-bottom: 4px; }
+.turn-log-entry {
+    font-size: 0.8em; padding: 3px 8px; margin-bottom: 2px;
+    background: var(--panel-bg); border-radius: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.turn-log-player { font-weight: bold; }
+.turn-log-rolls { color: var(--text-dim); }
+.turn-log-score { font-weight: 500; }
+
 /* ── Scorecard table ─────────────────────────────────────────────────────── */
 
 #scorecard {

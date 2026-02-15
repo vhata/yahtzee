@@ -537,6 +537,29 @@ class FrontendAdapter:
         if coord.ai_showing_score_choice and coord.ai_score_choice_category:
             ai_score_choice = coord.ai_score_choice_category.value
 
+        # Recent turn log (for multiplayer turn history display)
+        turn_log = []
+        if coord.multiplayer:
+            game_log = coord.game_log
+            score_entries = [e for e in game_log.entries if e.event_type == "score"]
+            for entry in score_entries:
+                turn_entries = game_log.get_turn_entries(entry.turn, entry.player_index)
+                rolls = [e for e in turn_entries if e.event_type == "roll"]
+                dice_strs = []
+                for r in rolls:
+                    dice_strs.append(list(r.dice_values))
+                pname = (coord.player_configs[entry.player_index][0]
+                         if entry.player_index < len(coord.player_configs)
+                         else f"P{entry.player_index}")
+                turn_log.append({
+                    "turn": entry.turn,
+                    "player_index": entry.player_index,
+                    "player_name": pname,
+                    "category": entry.category.value if entry.category else None,
+                    "score": entry.score,
+                    "rolls": dice_strs,
+                })
+
         return {
             "dice": dice,
             "rolls_used": coord.rolls_used,
@@ -575,4 +598,5 @@ class FrontendAdapter:
             "colorblind_mode": self.colorblind_mode,
             "dark_mode": self.dark_mode,
             "sound_enabled": self.sound.enabled,
+            "turn_log": turn_log,
         }

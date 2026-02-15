@@ -59,6 +59,7 @@ function render(s) {
     renderRollButton(s);
     renderRollStatus(s);
     renderAIReason(s);
+    renderTurnLog(s);
     renderScorecard(s);
     renderOverlays(s);
 }
@@ -163,6 +164,32 @@ function renderRollStatus(s) {
 function renderAIReason(s) {
     const el = document.getElementById("ai-reason");
     el.textContent = s.ai_reason || "";
+}
+
+function renderTurnLog(s) {
+    const el = document.getElementById("turn-log");
+    if (!s.multiplayer || !s.turn_log || s.turn_log.length === 0) {
+        el.innerHTML = "";
+        return;
+    }
+
+    // Show the most recent turns (up to 8 entries to avoid clutter)
+    const recent = s.turn_log.slice(-8);
+    let html = '<div class="turn-log-header">Recent Turns</div>';
+    for (const entry of recent) {
+        const rolls = entry.rolls.map(r => "[" + r.join(",") + "]").join(" → ");
+        const cat = entry.category || "?";
+        const score = entry.score != null ? entry.score : "?";
+        const color = playerColor(entry.player_index);
+        html += `<div class="turn-log-entry" style="border-left: 3px solid ${color};">`;
+        html += `<span class="turn-log-player" style="color: ${color};">${entry.player_name}</span> `;
+        if (rolls) {
+            html += `<span class="turn-log-rolls">${rolls} →</span> `;
+        }
+        html += `<span class="turn-log-score">${cat}: ${score}</span>`;
+        html += `</div>`;
+    }
+    el.innerHTML = html;
 }
 
 function renderScorecard(s) {
