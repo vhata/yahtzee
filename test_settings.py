@@ -66,3 +66,21 @@ def test_save_to_bad_path_does_not_raise(tmp_path):
     bad_path = tmp_path / "nonexistent_dir" / "nested" / "settings.json"
     # Should not raise
     save_settings({"colorblind_mode": True}, path=bad_path)
+
+
+# ── 3. Atomic Writes ────────────────────────────────────────────────────────
+
+
+def test_atomic_write_preserves_existing_settings(tmp_path):
+    """Existing settings survive even if a .tmp file is left over from a crash."""
+    path = tmp_path / "settings.json"
+    save_settings({"colorblind_mode": True, "sound_enabled": False, "speed": "fast", "dark_mode": True}, path=path)
+
+    # Simulate a crashed partial write
+    tmp_file = tmp_path / "settings.json.tmp"
+    tmp_file.write_text("corrupted garbage")
+
+    # Original should still load correctly
+    loaded = load_settings(path=path)
+    assert loaded["colorblind_mode"] is True
+    assert loaded["speed"] == "fast"

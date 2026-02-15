@@ -5,6 +5,8 @@ No pygame dependency — follows the same pattern as score_history.py.
 """
 
 import json
+import os
+import tempfile
 from pathlib import Path
 
 DEFAULTS = {
@@ -44,11 +46,27 @@ def load_settings(path=None):
 
 
 def save_settings(settings, path=None):
-    """Write settings dict to JSON. Silently ignores write errors."""
+    """Write settings dict to JSON atomically. Silently ignores write errors.
+
+    Uses temp file + os.replace() so a crash mid-write can't corrupt
+    existing settings.
+    """
     if path is None:
         path = _default_path()
     path = Path(path)
     try:
-        path.write_text(json.dumps(settings, indent=2))
+        data = json.dumps(settings, indent=2)
+        fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+        try:
+            os.write(fd, data.encode())
+            os.close(fd)
+            os.replace(tmp, path)
+        except BaseException:
+            os.close(fd)
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
     except OSError:
         pass

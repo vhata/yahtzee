@@ -224,3 +224,34 @@ def test_filtered_combined(tmp_path):
     result = get_recent_scores_filtered(player_type="human", mode="multiplayer", path=path)
     assert len(result) == 1
     assert result[0]["score"] == 200
+
+
+# ── 8. Atomic Writes ──────────────────────────────────────────────────────
+
+
+def test_atomic_write_preserves_data_on_leftover_tmp(tmp_path):
+    """A leftover .tmp file doesn't affect loading existing scores."""
+    path = tmp_path / "scores.json"
+    record_score(100, player_type="human", path=path)
+
+    # Simulate a crashed partial write by leaving a garbage .tmp file
+    tmp_file = tmp_path / "scores.json.tmp"
+    tmp_file.write_text("corrupted garbage")
+
+    # Original file should still load fine
+    entries = get_all_scores(path=path)
+    assert len(entries) == 1
+    assert entries[0]["score"] == 100
+
+
+def test_atomic_write_no_partial_on_disk_error(tmp_path):
+    """If the target dir doesn't exist, _save_scores raises without leaving debris."""
+    from score_history import _save_scores
+
+    bad_path = tmp_path / "nonexistent_dir" / "scores.json"
+    with pytest.raises(OSError):
+        _save_scores([{"score": 1}], path=bad_path)
+
+    # No leftover .tmp files in tmp_path
+    tmp_files = list(tmp_path.glob("*.tmp"))
+    assert tmp_files == []

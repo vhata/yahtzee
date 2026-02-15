@@ -5,6 +5,8 @@ capped at 1000 entries. No pygame dependency.
 """
 
 import json
+import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -31,11 +33,27 @@ def _load_scores(path=None):
 
 
 def _save_scores(entries, path=None):
-    """Write score entries to the JSON file."""
+    """Write score entries to the JSON file atomically.
+
+    Writes to a temp file then does os.replace() so a crash mid-write
+    can't corrupt the existing data.
+    """
     if path is None:
         path = _default_path()
     path = Path(path)
-    path.write_text(json.dumps(entries, indent=2))
+    data = json.dumps(entries, indent=2)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        os.write(fd, data.encode())
+        os.close(fd)
+        os.replace(tmp, path)
+    except BaseException:
+        os.close(fd)
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def record_score(score, player_type="human", path=None):
