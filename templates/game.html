@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yahtzee</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/dice.css">
+</head>
+<body>
+    <div id="app">
+        <header id="header">
+            <h1>YAHTZEE</h1>
+            <div id="round-info"></div>
+            <div id="player-bar"></div>
+        </header>
+
+        <main id="main">
+            <div id="dice-area">
+                <div id="dice-container"></div>
+                <button id="roll-btn" onclick="sendAction('roll')">ROLL</button>
+                <div id="roll-status"></div>
+                <div id="ai-reason"></div>
+            </div>
+            <div id="scorecard-area">
+                <table id="scorecard">
+                    <thead><tr><th>Category</th><th>Score</th></tr></thead>
+                    <tbody id="scorecard-body"></tbody>
+                </table>
+            </div>
+        </main>
+
+        <!-- Overlays -->
+        <div id="overlay-help" class="overlay hidden">
+            <div class="overlay-panel">
+                <h2>CONTROLS</h2>
+                <table class="controls-table">
+                    <tr><td>Space</td><td>Roll dice</td></tr>
+                    <tr><td>1-5</td><td>Toggle die hold</td></tr>
+                    <tr><td>Tab / ↓</td><td>Next category</td></tr>
+                    <tr><td>Shift+Tab / ↑</td><td>Previous category</td></tr>
+                    <tr><td>Enter</td><td>Score selected</td></tr>
+                    <tr><td>H</td><td>Score history</td></tr>
+                    <tr><td>S</td><td>Toggle sound</td></tr>
+                    <tr><td>+/-</td><td>AI speed</td></tr>
+                    <tr><td>Ctrl+Z</td><td>Undo</td></tr>
+                    <tr><td>C</td><td>Colorblind mode</td></tr>
+                    <tr><td>D</td><td>Dark mode</td></tr>
+                    <tr><td>R</td><td>Game replay</td></tr>
+                    <tr><td>? / F1</td><td>This help</td></tr>
+                    <tr><td>Esc</td><td>Close / Quit</td></tr>
+                </table>
+                <p class="overlay-footer">Press ? or Esc to close</p>
+            </div>
+        </div>
+
+        <div id="overlay-history" class="overlay hidden">
+            <div class="overlay-panel">
+                <h2>SCORE HISTORY</h2>
+                <div id="history-filters"></div>
+                <div id="history-content"></div>
+                <p class="overlay-footer">H or Esc to close</p>
+            </div>
+        </div>
+
+        <div id="overlay-replay" class="overlay hidden">
+            <div class="overlay-panel">
+                <h2>GAME REPLAY</h2>
+                <div id="replay-content"></div>
+                <p class="overlay-footer">R or Esc to close</p>
+            </div>
+        </div>
+
+        <div id="overlay-confirm" class="overlay hidden">
+            <div class="overlay-panel overlay-small">
+                <h3 id="confirm-text"></h3>
+                <p>Y / Enter to confirm, N / Esc to cancel</p>
+                <div class="confirm-buttons">
+                    <button onclick="sendAction('confirm_zero_yes')">Yes</button>
+                    <button onclick="sendAction('confirm_zero_no')">No</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="overlay-gameover" class="overlay hidden">
+            <div class="overlay-panel">
+                <h2>GAME OVER!</h2>
+                <div id="gameover-content"></div>
+                <button id="play-again-btn" onclick="sendAction('reset')">PLAY AGAIN</button>
+            </div>
+        </div>
+
+        <div id="overlay-transition" class="overlay hidden">
+            <div class="overlay-panel overlay-small">
+                <h2 id="transition-text"></h2>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div id="toolbar">
+            <button onclick="sendAction('toggle_help')" title="Help (?)">?</button>
+            <button onclick="sendAction('toggle_dark_mode')" title="Dark mode (D)">🌙</button>
+            <button onclick="sendAction('toggle_colorblind')" title="Colorblind (C)">👁</button>
+            <button onclick="sendAction('toggle_sound')" title="Sound (S)" id="sound-btn">🔊</button>
+            <button onclick="sendAction('undo')" title="Undo (Ctrl+Z)">↩</button>
+        </div>
+    </div>
+
+    <script src="/static/game.js"></script>
+</body>
+</html>

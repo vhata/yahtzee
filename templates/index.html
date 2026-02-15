@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yahtzee</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .config-form { max-width: 600px; margin: 40px auto; padding: 30px; }
+        .config-form h1 { text-align: center; font-size: 2.5em; margin-bottom: 10px; }
+        .config-form p { text-align: center; color: #666; margin-bottom: 30px; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; font-weight: bold; margin-bottom: 5px; }
+        .form-group select, .form-group input {
+            width: 100%; padding: 8px 12px; border: 2px solid #ddd;
+            border-radius: 6px; font-size: 16px;
+        }
+        .player-row { display: flex; gap: 10px; margin-bottom: 8px; align-items: center; }
+        .player-row select { flex: 1; }
+        .player-row input { flex: 1; }
+        .player-row button { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; }
+        .btn-remove { background: #e74c3c; color: white; }
+        .btn-add { background: #27ae60; color: white; padding: 8px 16px; border: none;
+                   border-radius: 6px; cursor: pointer; margin-bottom: 20px; }
+        .btn-start { display: block; width: 100%; padding: 14px; font-size: 1.2em;
+                     background: #2980b9; color: white; border: none; border-radius: 8px;
+                     cursor: pointer; font-weight: bold; }
+        .btn-start:hover { background: #3498db; }
+        .btn-resume { display: block; width: 100%; padding: 12px; font-size: 1.1em;
+                      background: #f39c12; color: white; border: none; border-radius: 8px;
+                      cursor: pointer; margin-bottom: 20px; }
+        .btn-resume:hover { background: #e67e22; }
+        .quick-start { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
+        .quick-start button { padding: 10px 20px; border: 2px solid #2980b9;
+                              border-radius: 6px; background: white; cursor: pointer; font-size: 14px; }
+        .quick-start button:hover { background: #ecf0f1; }
+    </style>
+</head>
+<body>
+    <div class="config-form">
+        <h1>YAHTZEE</h1>
+        <p>Roll dice, score points, beat the odds!</p>
+
+        {% if has_autosave %}
+        <a href="/game?resume=true" class="btn-resume" style="text-decoration: none; text-align: center;">
+            Resume Previous Game
+        </a>
+        {% endif %}
+
+        <h3>Quick Start</h3>
+        <div class="quick-start">
+            <button onclick="startGame('')">Solo</button>
+            <button onclick="startGame('ai=true&strategy=greedy')">vs Greedy AI</button>
+            <button onclick="startGame('ai=true&strategy=optimal')">vs Optimal AI</button>
+        </div>
+
+        <hr style="margin: 20px 0;">
+
+        <h3>Custom Game</h3>
+        <div id="players-container">
+            <div class="player-row" data-index="0">
+                <select class="player-type">
+                    <option value="human">Human</option>
+                    <option value="greedy">Greedy AI</option>
+                    <option value="ev">EV AI</option>
+                    <option value="optimal">Optimal AI</option>
+                    <option value="random">Random AI</option>
+                </select>
+                <input type="text" class="player-name" placeholder="Name (optional)">
+            </div>
+        </div>
+        <button class="btn-add" onclick="addPlayer()">+ Add Player</button>
+
+        <div class="form-group">
+            <label>Speed</label>
+            <select id="speed-select">
+                <option value="slow">Slow</option>
+                <option value="normal" selected>Normal</option>
+                <option value="fast">Fast</option>
+            </select>
+        </div>
+
+        <button class="btn-start" onclick="startCustom()">Start Game</button>
+    </div>
+
+    <script>
+        let playerCount = 1;
+
+        function addPlayer() {
+            if (playerCount >= 4) return;
+            playerCount++;
+            const container = document.getElementById('players-container');
+            const row = document.createElement('div');
+            row.className = 'player-row';
+            row.dataset.index = playerCount - 1;
+            row.innerHTML = `
+                <select class="player-type">
+                    <option value="human">Human</option>
+                    <option value="greedy">Greedy AI</option>
+                    <option value="ev">EV AI</option>
+                    <option value="optimal">Optimal AI</option>
+                    <option value="random">Random AI</option>
+                </select>
+                <input type="text" class="player-name" placeholder="Name (optional)">
+                <button class="btn-remove" onclick="removePlayer(this)">×</button>
+            `;
+            container.appendChild(row);
+        }
+
+        function removePlayer(btn) {
+            btn.parentElement.remove();
+            playerCount--;
+        }
+
+        function startGame(params) {
+            window.location.href = '/game' + (params ? '?' + params : '');
+        }
+
+        function startCustom() {
+            const rows = document.querySelectorAll('.player-row');
+            const types = [];
+            const names = [];
+            rows.forEach(row => {
+                types.push(row.querySelector('.player-type').value);
+                names.push(row.querySelector('.player-name').value.trim());
+            });
+            const speed = document.getElementById('speed-select').value;
+
+            let params = `speed=${speed}`;
+            if (types.length === 1) {
+                // Single player
+                if (types[0] !== 'human') {
+                    params += `&ai=true&strategy=${types[0]}`;
+                }
+            } else {
+                // Multiplayer
+                params += `&players=${types.join(',')}`;
+                const nameStr = names.join(',');
+                if (nameStr.replace(/,/g, '').length > 0) {
+                    params += `&names=${encodeURIComponent(nameStr)}`;
+                }
+            }
+            window.location.href = '/game?' + params;
+        }
+    </script>
+</body>
+</html>
