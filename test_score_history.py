@@ -147,7 +147,7 @@ def test_entry_has_date(tmp_path):
 
 # ── 6. Recent Scores ──────────────────────────────────────────────────────
 
-from score_history import get_recent_scores
+from score_history import get_recent_scores, get_recent_scores_filtered
 
 
 def test_recent_scores_newest_first(tmp_path):
@@ -174,3 +174,53 @@ def test_recent_scores_respects_limit(tmp_path):
     assert recent[0]["score"] == 90
     assert recent[1]["score"] == 80
     assert recent[2]["score"] == 70
+
+
+# ── 7. Filtered Recent Scores ──────────────────────────────────────────────
+
+
+def test_filtered_by_player_type(tmp_path):
+    """get_recent_scores_filtered filters by player_type."""
+    path = tmp_path / "scores.json"
+    record_score(100, player_type="human", path=path)
+    record_score(200, player_type="optimal", path=path)
+    record_score(150, player_type="human", path=path)
+
+    filtered = get_recent_scores_filtered(player_type="human", path=path)
+    assert len(filtered) == 2
+    assert all(e["player_type"] == "human" for e in filtered)
+    # Newest first
+    assert filtered[0]["score"] == 150
+    assert filtered[1]["score"] == 100
+
+
+def test_filtered_by_mode(tmp_path):
+    """get_recent_scores_filtered filters by mode."""
+    path = tmp_path / "scores.json"
+    record_score(100, player_type="human", path=path)  # mode="single"
+    record_multiplayer_scores([
+        {"name": "A", "score": 200, "player_type": "human"},
+        {"name": "B", "score": 180, "player_type": "optimal"},
+    ], path=path)
+
+    single = get_recent_scores_filtered(mode="single", path=path)
+    assert len(single) == 1
+    assert single[0]["mode"] == "single"
+
+    multi = get_recent_scores_filtered(mode="multiplayer", path=path)
+    assert len(multi) == 2
+    assert all(e["mode"] == "multiplayer" for e in multi)
+
+
+def test_filtered_combined(tmp_path):
+    """get_recent_scores_filtered can combine player_type and mode filters."""
+    path = tmp_path / "scores.json"
+    record_score(100, player_type="human", path=path)
+    record_multiplayer_scores([
+        {"name": "A", "score": 200, "player_type": "human"},
+        {"name": "B", "score": 180, "player_type": "optimal"},
+    ], path=path)
+
+    result = get_recent_scores_filtered(player_type="human", mode="multiplayer", path=path)
+    assert len(result) == 1
+    assert result[0]["score"] == 200

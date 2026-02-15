@@ -116,3 +116,23 @@ def get_recent_scores(limit=20, path=None):
     entries = _load_scores(path)
     entries.reverse()  # newest first (entries are stored chronologically)
     return entries[:limit]
+
+
+def get_recent_scores_filtered(limit=20, player_type=None, mode=None, path=None):
+    """Return most recent score entries with optional filters, newest first.
+
+    Args:
+        limit: maximum number of entries to return (default 20).
+        player_type: if given, filter to only this player type (e.g. "human", "optimal").
+        mode: if given, filter to only this mode ("single" or "multiplayer").
+
+    Returns:
+        List of score entry dicts, most recent first.
+    """
+    entries = _load_scores(path)
+    if player_type is not None:
+        entries = [e for e in entries if e.get("player_type") == player_type]
+    if mode is not None:
+        entries = [e for e in entries if e.get("mode") == mode]
+    entries.reverse()
+    return entries[:limit]

@@ -13,7 +13,7 @@ from game_engine import (
 )
 from game_coordinator import GameCoordinator, parse_args, _make_strategy
 from sounds import SoundManager
-from score_history import record_score, record_multiplayer_scores, get_high_scores, get_recent_scores
+from score_history import record_score, record_multiplayer_scores, get_high_scores, get_recent_scores, get_recent_scores_filtered
 
 # Initialize pygame (mixer pre-init for low-latency audio)
 pygame.mixer.pre_init(44100, -16, 1, 512)
@@ -320,6 +320,10 @@ class YahtzeeGame:
         self.showing_history = False
         self.showing_help = False
         self.kb_selected_index = None  # Keyboard category selection (0-12)
+        self.history_filter_player = "all"  # "all", "human", "greedy", "ev", "optimal"
+        self.history_filter_mode = "all"    # "all", "single", "multiplayer"
+        self._player_filter_options = ["all", "human", "greedy", "ev", "optimal"]
+        self._mode_filter_options = ["all", "single", "multiplayer"]
 
         # Category draw order (matches scorecard layout)
         self.category_order = [
@@ -369,6 +373,8 @@ class YahtzeeGame:
                         self.showing_help = False
                     elif self.showing_history:
                         self.showing_history = False
+                        self.history_filter_player = "all"
+                        self.history_filter_mode = "all"
                     else:
                         self.running = False
                 # Help overlay (? or F1)
@@ -384,14 +390,26 @@ class YahtzeeGame:
                         self.showing_history = not self.showing_history
                         if self.showing_history:
                             self.kb_selected_index = None
+                        else:
+                            # Reset filters when closing
+                            self.history_filter_player = "all"
+                            self.history_filter_mode = "all"
+                # History filter cycling (P/M keys while overlay showing)
+                if self.showing_history:
+                    if event.key == pygame.K_p:
+                        idx = self._player_filter_options.index(self.history_filter_player)
+                        self.history_filter_player = self._player_filter_options[(idx + 1) % len(self._player_filter_options)]
+                    elif event.key == pygame.K_m:
+                        idx = self._mode_filter_options.index(self.history_filter_mode)
+                        self.history_filter_mode = self._mode_filter_options[(idx + 1) % len(self._mode_filter_options)]
                 # Speed control (+/- keys) — when any AI is present
                 if coord.has_any_ai and not game_over:
                     if event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
                         coord.change_speed(+1)
                     elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
                         coord.change_speed(-1)
-                # Sound toggle (M key)
-                if event.key == pygame.K_m:
+                # Sound toggle (M key) — not while history overlay is showing
+                if event.key == pygame.K_m and not self.showing_history:
                     self.sounds.toggle()
                 # Undo (Ctrl+Z) for human players
                 if event.key == pygame.K_z and (event.mod & pygame.KMOD_CTRL or event.mod & pygame.KMOD_META):
@@ -1065,9 +1083,23 @@ class YahtzeeGame:
         title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, panel_y + 35))
         self.screen.blit(title, title_rect)
 
+        # Filter bar
+        filter_font = self._font(22)
+        filter_y = panel_y + 60
+        player_label = self.history_filter_player.capitalize()
+        mode_label = self.history_filter_mode.capitalize()
+        active_color = (60, 120, 160)
+        dim_color = (140, 140, 160)
+        p_color = active_color if self.history_filter_player != "all" else dim_color
+        m_color = active_color if self.history_filter_mode != "all" else dim_color
+        filter_text = filter_font.render(f"Player: {player_label}  (P)", True, p_color)
+        self.screen.blit(filter_text, (panel_x + 40, filter_y))
+        filter_text2 = filter_font.render(f"Mode: {mode_label}  (M)", True, m_color)
+        self.screen.blit(filter_text2, (panel_x + 350, filter_y))
+
         # Column headers
         header_font = self._font(26)
-        header_y = panel_y + 70
+        header_y = panel_y + 85
         headers = [("Rank", panel_x + 40), ("Score", panel_x + 110),
                    ("Player", panel_x + 210), ("Mode", panel_x + 350),
                    ("Date", panel_x + 470)]
@@ -1080,8 +1112,10 @@ class YahtzeeGame:
                          (panel_x + 20, header_y + 25),
                          (panel_x + panel_w - 20, header_y + 25))
 
-        # Score entries
-        entries = get_recent_scores(limit=20)
+        # Score entries (apply filters)
+        p_filter = None if self.history_filter_player == "all" else self.history_filter_player
+        m_filter = None if self.history_filter_mode == "all" else self.history_filter_mode
+        entries = get_recent_scores_filtered(limit=20, player_type=p_filter, mode=m_filter)
         entry_font = self._font(24)
         row_y = header_y + 35
 
@@ -1115,7 +1149,7 @@ class YahtzeeGame:
 
         # Footer
         footer_font = self._font(24)
-        footer = footer_font.render("Press H or Escape to close", True, (140, 140, 160))
+        footer = footer_font.render("P/M: filter  |  H or Escape to close", True, (140, 140, 160))
         footer_rect = footer.get_rect(center=(WINDOW_WIDTH // 2, panel_y + panel_h - 25))
         self.screen.blit(footer, footer_rect)
 
