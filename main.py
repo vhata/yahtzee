@@ -318,6 +318,7 @@ class YahtzeeGame:
         self.category_rects = {}  # Maps Category to pygame.Rect for click detection
         self.hovered_category = None
         self.showing_history = False
+        self.showing_help = False
 
         # Font cache — avoids recreating Font objects every frame
         self._font_cache = {}
@@ -339,13 +340,21 @@ class YahtzeeGame:
                 self.running = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    if self.showing_history:
+                    if self.showing_help:
+                        self.showing_help = False
+                    elif self.showing_history:
                         self.showing_history = False
                     else:
                         self.running = False
+                # Help overlay (? or F1)
+                if event.key == pygame.K_F1 or (event.key == pygame.K_SLASH and event.mod & pygame.KMOD_SHIFT):
+                    if not coord.is_rolling and not game_over:
+                        self.showing_help = not self.showing_help
+                        if self.showing_help:
+                            self.showing_history = False
                 # History overlay (H key)
                 if event.key == pygame.K_h:
-                    if not coord.is_rolling and not game_over:
+                    if not coord.is_rolling and not game_over and not self.showing_help:
                         self.showing_history = not self.showing_history
                 # Speed control (+/- keys) — when any AI is present
                 if coord.has_any_ai and not game_over:
@@ -361,7 +370,7 @@ class YahtzeeGame:
                     if coord.undo():
                         self.animation_dice_values = [die.value for die in coord.dice]
                 # Keyboard shortcuts for human players
-                if is_human_turn and not game_over and not coord.is_rolling and not self.showing_history:
+                if is_human_turn and not game_over and not coord.is_rolling and not self.showing_history and not self.showing_help:
                     if event.key == pygame.K_SPACE:
                         coord.roll_dice()
                         if coord.is_rolling:
@@ -372,14 +381,14 @@ class YahtzeeGame:
                         self.sounds.play_click()
             elif event.type == pygame.MOUSEMOTION:
                 self.hovered_category = None
-                if not game_over and is_human_turn and not self.showing_history:
+                if not game_over and is_human_turn and not self.showing_history and not self.showing_help:
                     scorecard = coord.scorecard
                     for cat, rect in self.category_rects.items():
                         if rect.collidepoint(event.pos) and not scorecard.is_filled(cat):
                             self.hovered_category = cat
                             break
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1 and is_human_turn and not self.showing_history:
+                if event.button == 1 and is_human_turn and not self.showing_history and not self.showing_help:
                     clicked_category = False
                     for cat, rect in self.category_rects.items():
                         if rect.collidepoint(event.pos):
@@ -396,7 +405,7 @@ class YahtzeeGame:
                                 break
 
             # Handle button clicks (only if not currently rolling and human turn)
-            if is_human_turn and not self.showing_history and self.roll_button.handle_event(event) and not coord.is_rolling:
+            if is_human_turn and not self.showing_history and not self.showing_help and self.roll_button.handle_event(event) and not coord.is_rolling:
                 coord.roll_dice()
                 if coord.is_rolling:
                     self.sounds.play_roll()
@@ -1027,6 +1036,62 @@ class YahtzeeGame:
         footer_rect = footer.get_rect(center=(WINDOW_WIDTH // 2, panel_y + panel_h - 25))
         self.screen.blit(footer, footer_rect)
 
+    def draw_help_overlay(self):
+        """Draw semi-transparent overlay showing keyboard controls."""
+        # Semi-transparent background
+        overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        self.screen.blit(overlay, (0, 0))
+
+        # Panel
+        panel_w, panel_h = 500, 420
+        panel_x = (WINDOW_WIDTH - panel_w) // 2
+        panel_y = (WINDOW_HEIGHT - panel_h) // 2
+        panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
+        pygame.draw.rect(self.screen, (250, 252, 255), panel_rect, border_radius=12)
+        pygame.draw.rect(self.screen, (100, 100, 120), panel_rect, width=2, border_radius=12)
+
+        # Title
+        title_font = self._font(48)
+        title = title_font.render("CONTROLS", True, (60, 120, 160))
+        title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, panel_y + 35))
+        self.screen.blit(title, title_rect)
+
+        # Key-action pairs
+        controls = [
+            ("Space", "Roll dice"),
+            ("1-5", "Toggle die hold"),
+            ("Tab / \u2193", "Next category"),
+            ("Shift+Tab / \u2191", "Previous category"),
+            ("Enter", "Score selected category"),
+            ("H", "Score history"),
+            ("M", "Toggle sound"),
+            ("+/-", "AI speed"),
+            ("Ctrl+Z", "Undo"),
+            ("C", "Colorblind mode"),
+            ("Esc", "Close overlay / Quit"),
+            ("? / F1", "This help screen"),
+        ]
+
+        key_font = self._font(26)
+        desc_font = self._font(24)
+        row_y = panel_y + 70
+        key_x = panel_x + 40
+        desc_x = panel_x + 220
+
+        for key, desc in controls:
+            key_surface = key_font.render(key, True, (60, 120, 160))
+            desc_surface = desc_font.render(desc, True, (60, 60, 60))
+            self.screen.blit(key_surface, (key_x, row_y))
+            self.screen.blit(desc_surface, (desc_x, row_y))
+            row_y += 26
+
+        # Footer
+        footer_font = self._font(24)
+        footer = footer_font.render("Press ? or Escape to close", True, (140, 140, 160))
+        footer_rect = footer.get_rect(center=(WINDOW_WIDTH // 2, panel_y + panel_h - 25))
+        self.screen.blit(footer, footer_rect)
+
     def draw(self):
         """Draw everything to the screen"""
         coord = self.coordinator
@@ -1154,6 +1219,10 @@ class YahtzeeGame:
         # Draw history overlay
         if self.showing_history:
             self.draw_history_overlay()
+
+        # Draw help overlay
+        if self.showing_help:
+            self.draw_help_overlay()
 
         # Update display
         pygame.display.flip()
