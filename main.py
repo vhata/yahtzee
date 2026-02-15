@@ -2,7 +2,8 @@
 """
 Yahtzee Game - A graphical implementation using pygame
 
-Thin rendering shell that delegates all game coordination to GameCoordinator.
+Thin rendering shell that delegates all game coordination to GameCoordinator
+and UI state management to FrontendAdapter.
 """
 import pygame
 import sys
@@ -13,8 +14,10 @@ from game_engine import (
 )
 from game_coordinator import GameCoordinator, parse_args, _make_strategy
 from sounds import SoundManager
-from score_history import record_score, record_multiplayer_scores, get_high_scores, get_recent_scores, get_recent_scores_filtered
-from settings import load_settings, save_settings
+from frontend_adapter import (
+    FrontendAdapter, SoundInterface,
+    CATEGORY_ORDER, CATEGORY_TOOLTIPS, OPTIMAL_EXPECTED_TOTAL,
+)
 
 # Initialize pygame (mixer pre-init for low-latency audio)
 pygame.mixer.pre_init(44100, -16, 1, 512)
@@ -79,26 +82,6 @@ DARK_PANEL_BORDER = (70, 72, 85)
 DARK_SHADOW_COLOR = (20, 20, 25, 50)
 DARK_BORDER_COLOR = (80, 80, 90)
 
-# Optimal strategy benchmark average (empirical from 200-game runs)
-OPTIMAL_EXPECTED_TOTAL = 223.0
-
-# Category tooltips for new players
-CATEGORY_TOOLTIPS = {
-    Category.ONES: "Sum of all dice showing 1",
-    Category.TWOS: "Sum of all dice showing 2",
-    Category.THREES: "Sum of all dice showing 3",
-    Category.FOURS: "Sum of all dice showing 4",
-    Category.FIVES: "Sum of all dice showing 5",
-    Category.SIXES: "Sum of all dice showing 6",
-    Category.THREE_OF_KIND: "3 of the same, score = sum of all dice",
-    Category.FOUR_OF_KIND: "4 of the same, score = sum of all dice",
-    Category.FULL_HOUSE: "3 of one + 2 of another = 25",
-    Category.SMALL_STRAIGHT: "4 consecutive dice = 30",
-    Category.LARGE_STRAIGHT: "5 consecutive dice = 40",
-    Category.YAHTZEE: "All 5 dice the same = 50",
-    Category.CHANCE: "Sum of all dice, no pattern needed",
-}
-
 # Dice constants
 DICE_SIZE = 80
 DICE_MARGIN = 20
@@ -106,6 +89,34 @@ DOT_RADIUS = 6
 
 # Game constants
 MAX_ROLLS_PER_TURN = 3
+
+
+# ── Pygame Sound Adapter ─────────────────────────────────────────────────────
+
+class PygameSoundAdapter(SoundInterface):
+    """Wraps SoundManager to implement the frontend adapter's SoundInterface."""
+
+    def __init__(self):
+        self._manager = SoundManager()
+
+    def play_roll(self):
+        self._manager.play_roll()
+
+    def play_click(self):
+        self._manager.play_click()
+
+    def play_score(self):
+        self._manager.play_score()
+
+    def play_fanfare(self):
+        self._manager.play_fanfare()
+
+    def toggle(self):
+        return self._manager.toggle()
+
+    @property
+    def enabled(self):
+        return self._manager.enabled
 
 
 class DiceSprite:
@@ -362,6 +373,11 @@ class YahtzeeGame:
                 ai_strategy=ai_strategy, speed=speed, players=players
             )
 
+        # Frontend adapter manages shared UI state (overlays, settings, etc.)
+        self.adapter = FrontendAdapter(
+            self.coordinator, sound=PygameSoundAdapter()
+        )
+
         # Dice sprites (visual representation only)
         self.dice_sprites = []
         dice_y = 300
@@ -395,48 +411,86 @@ class YahtzeeGame:
         self.bounce_timers = [0] * 5
         self.bounce_duration = 15  # frames
 
-        # Sound
-        self.sounds = SoundManager()
-        self._game_over_sound_played = False
-        self._scores_saved = False
-
-        # Score flash animation
-        self.score_flash_category = None
-        self.score_flash_timer = 0
-        self.score_flash_duration = 30  # 0.5 sec at 60 FPS
-
-        # UI state
+        # Pygame-only UI state
         self.category_rects = {}  # Maps Category to pygame.Rect for click detection
-        self.hovered_category = None
-        self.colorblind_mode = False
-        self.showing_history = False
-        self.showing_help = False
-        self.kb_selected_index = None  # Keyboard category selection (0-12)
-        self.history_filter_player = "all"  # "all", "human", "greedy", "ev", "optimal"
-        self.history_filter_mode = "all"    # "all", "single", "multiplayer"
-        self._player_filter_options = ["all", "human", "greedy", "ev", "optimal"]
-        self._mode_filter_options = ["all", "single", "multiplayer"]
-
-        # Category draw order (matches scorecard layout)
-        self.category_order = [
-            Category.ONES, Category.TWOS, Category.THREES,
-            Category.FOURS, Category.FIVES, Category.SIXES,
-            Category.THREE_OF_KIND, Category.FOUR_OF_KIND,
-            Category.FULL_HOUSE, Category.SMALL_STRAIGHT,
-            Category.LARGE_STRAIGHT, Category.YAHTZEE, Category.CHANCE,
-        ]
-
-        # Zero-score confirmation dialog
-        self.confirm_zero_category = None
-
-        # Dark mode (persisted via settings.py)
-        self.dark_mode = False
-
-        # Replay overlay (game over only)
-        self.showing_replay = False
 
         # Font cache — avoids recreating Font objects every frame
         self._font_cache = {}
+
+    # ── Properties delegating to adapter (for backward compatibility) ─────
+
+    @property
+    def colorblind_mode(self):
+        return self.adapter.colorblind_mode
+
+    @colorblind_mode.setter
+    def colorblind_mode(self, value):
+        self.adapter.colorblind_mode = value
+
+    @property
+    def dark_mode(self):
+        return self.adapter.dark_mode
+
+    @dark_mode.setter
+    def dark_mode(self, value):
+        self.adapter.dark_mode = value
+
+    @property
+    def hovered_category(self):
+        return self.adapter.hovered_category
+
+    @hovered_category.setter
+    def hovered_category(self, value):
+        self.adapter.hovered_category = value
+
+    @property
+    def kb_selected_index(self):
+        return self.adapter.kb_selected_index
+
+    @kb_selected_index.setter
+    def kb_selected_index(self, value):
+        self.adapter.kb_selected_index = value
+
+    @property
+    def showing_help(self):
+        return self.adapter.showing_help
+
+    @property
+    def showing_history(self):
+        return self.adapter.showing_history
+
+    @property
+    def showing_replay(self):
+        return self.adapter.showing_replay
+
+    @property
+    def confirm_zero_category(self):
+        return self.adapter.confirm_zero_category
+
+    @property
+    def score_flash_category(self):
+        return self.adapter.score_flash_category
+
+    @property
+    def score_flash_timer(self):
+        return self.adapter.score_flash_timer
+
+    @property
+    def score_flash_duration(self):
+        return self.adapter.score_flash_duration
+
+    @property
+    def history_filter_player(self):
+        return self.adapter.history_filter_player
+
+    @property
+    def history_filter_mode(self):
+        return self.adapter.history_filter_mode
+
+    @property
+    def sounds(self):
+        """Access the underlying SoundManager for backward compatibility."""
+        return self.adapter.sound._manager
 
     def _valid_color(self):
         """Return the valid score color based on colorblind mode."""
@@ -451,15 +505,6 @@ class YahtzeeGame:
         if size not in self._font_cache:
             self._font_cache[size] = pygame.font.Font(None, size)
         return self._font_cache[size]
-
-    def _save_current_settings(self):
-        """Persist current toggleable settings to disk."""
-        save_settings({
-            "colorblind_mode": self.colorblind_mode,
-            "sound_enabled": self.sounds._enabled,
-            "speed": self.coordinator.speed_name,
-            "dark_mode": self.dark_mode,
-        })
 
     # ── Theme helpers (dark mode vs light mode) ──────────────────────────
 
@@ -526,8 +571,9 @@ class YahtzeeGame:
         return (255, 245, 200)
 
     def handle_events(self):
-        """Handle pygame events — translates input to coordinator actions"""
+        """Handle pygame events — translates input to adapter/coordinator actions"""
         coord = self.coordinator
+        adapter = self.adapter
         is_human_turn = coord.is_current_player_human
         game_over = coord.game_over
 
@@ -536,213 +582,105 @@ class YahtzeeGame:
                 self.running = False
             elif event.type == pygame.KEYDOWN:
                 # Zero-score confirmation dialog takes priority
-                if self.confirm_zero_category is not None:
+                if adapter.confirm_zero_category is not None:
                     if event.key in (pygame.K_y, pygame.K_RETURN, pygame.K_KP_ENTER):
-                        cat = self.confirm_zero_category
-                        self.confirm_zero_category = None
-                        if coord.select_category(cat):
-                            self.sounds.play_score()
-                            self.kb_selected_index = None
+                        adapter.confirm_zero_yes()
                     elif event.key in (pygame.K_n, pygame.K_ESCAPE):
-                        self.confirm_zero_category = None
+                        adapter.confirm_zero_no()
                     continue  # Block all other input while dialog showing
 
                 if event.key == pygame.K_ESCAPE:
-                    if self.showing_help:
-                        self.showing_help = False
-                    elif self.showing_replay:
-                        self.showing_replay = False
-                    elif self.showing_history:
-                        self.showing_history = False
-                        self.history_filter_player = "all"
-                        self.history_filter_mode = "all"
-                    else:
+                    if not adapter.close_top_overlay():
                         self.running = False
                 # Help overlay (? or F1)
                 if event.key == pygame.K_F1 or (event.key == pygame.K_SLASH and event.mod & pygame.KMOD_SHIFT):
-                    if not coord.is_rolling and not game_over:
-                        self.showing_help = not self.showing_help
-                        if self.showing_help:
-                            self.showing_history = False
-                            self.kb_selected_index = None
+                    adapter.toggle_help()
                 # History overlay (H key)
                 if event.key == pygame.K_h:
-                    if not coord.is_rolling and not game_over and not self.showing_help:
-                        self.showing_history = not self.showing_history
-                        if self.showing_history:
-                            self.kb_selected_index = None
-                        else:
-                            # Reset filters when closing
-                            self.history_filter_player = "all"
-                            self.history_filter_mode = "all"
+                    adapter.toggle_history()
                 # History filter cycling (P/M keys while overlay showing)
-                if self.showing_history:
+                if adapter.showing_history:
                     if event.key == pygame.K_p:
-                        idx = self._player_filter_options.index(self.history_filter_player)
-                        self.history_filter_player = self._player_filter_options[(idx + 1) % len(self._player_filter_options)]
+                        adapter.cycle_player_filter()
                     elif event.key == pygame.K_m:
-                        idx = self._mode_filter_options.index(self.history_filter_mode)
-                        self.history_filter_mode = self._mode_filter_options[(idx + 1) % len(self._mode_filter_options)]
+                        adapter.cycle_mode_filter()
                 # Speed control (+/- keys) — when any AI is present
                 if coord.has_any_ai and not game_over:
                     if event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
-                        if coord.change_speed(+1):
-                            self._save_current_settings()
+                        adapter.change_speed(+1)
                     elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
-                        if coord.change_speed(-1):
-                            self._save_current_settings()
+                        adapter.change_speed(-1)
                 # Sound toggle (M key) — not while history overlay is showing
-                if event.key == pygame.K_m and not self.showing_history:
-                    self.sounds.toggle()
-                    self._save_current_settings()
+                if event.key == pygame.K_m and not adapter.showing_history:
+                    adapter.toggle_sound()
                 # Colorblind mode toggle (C key)
                 if event.key == pygame.K_c:
-                    self.colorblind_mode = not self.colorblind_mode
-                    self._save_current_settings()
+                    adapter.toggle_colorblind()
                 # Dark mode toggle (D key)
                 if event.key == pygame.K_d:
-                    self.dark_mode = not self.dark_mode
-                    self._save_current_settings()
+                    adapter.toggle_dark_mode()
                 # Replay overlay (R key, game over only)
                 if event.key == pygame.K_r and game_over:
-                    self.showing_replay = not self.showing_replay
+                    adapter.toggle_replay()
                 # Undo (Ctrl+Z) for human players
                 if event.key == pygame.K_z and (event.mod & pygame.KMOD_CTRL or event.mod & pygame.KMOD_META):
-                    if coord.undo():
+                    if adapter.do_undo():
                         self.animation_dice_values = [die.value for die in coord.dice]
                 # Keyboard shortcuts for human players
-                if is_human_turn and not game_over and not coord.is_rolling and not self.showing_history and not self.showing_help:
+                if is_human_turn and not game_over and not coord.is_rolling and not adapter.showing_history and not adapter.showing_help:
                     if event.key == pygame.K_SPACE:
-                        coord.roll_dice()
-                        if coord.is_rolling:
-                            self.sounds.play_roll()
+                        adapter.do_roll()
                     elif pygame.K_1 <= event.key <= pygame.K_5:
                         die_index = event.key - pygame.K_1
-                        coord.toggle_hold(die_index)
-                        self.sounds.play_click()
+                        adapter.do_hold(die_index)
                     elif event.key in (pygame.K_TAB, pygame.K_DOWN) and not (event.mod & pygame.KMOD_SHIFT):
-                        self._kb_navigate_category(+1)
+                        adapter.navigate_category(+1)
                     elif event.key == pygame.K_UP or (event.key == pygame.K_TAB and event.mod & pygame.KMOD_SHIFT):
-                        self._kb_navigate_category(-1)
+                        adapter.navigate_category(-1)
                     elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
-                        if self.kb_selected_index is not None:
-                            cat = self.category_order[self.kb_selected_index]
-                            self._try_score_category(cat)
+                        if adapter.kb_selected_index is not None:
+                            cat = CATEGORY_ORDER[adapter.kb_selected_index]
+                            adapter.try_score_category(cat)
             elif event.type == pygame.MOUSEMOTION:
-                self.hovered_category = None
-                self.kb_selected_index = None  # Mouse clears keyboard selection
-                if not game_over and is_human_turn and not self.showing_history and not self.showing_help:
+                adapter.clear_hover()
+                adapter.kb_selected_index = None  # Mouse clears keyboard selection
+                if not game_over and is_human_turn and not adapter.showing_history and not adapter.showing_help:
                     scorecard = coord.scorecard
                     for cat, rect in self.category_rects.items():
                         if rect.collidepoint(event.pos) and not scorecard.is_filled(cat):
-                            self.hovered_category = cat
+                            adapter.set_hovered_category(cat)
                             break
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                if self.confirm_zero_category is not None:
+                if adapter.confirm_zero_category is not None:
                     continue  # Block mouse clicks while dialog showing
-                if event.button == 1 and is_human_turn and not self.showing_history and not self.showing_help:
+                if event.button == 1 and is_human_turn and not adapter.showing_history and not adapter.showing_help:
                     clicked_category = False
                     for cat, rect in self.category_rects.items():
                         if rect.collidepoint(event.pos):
-                            self._try_score_category(cat)
+                            adapter.try_score_category(cat)
                             clicked_category = True
                             break
 
                     if not clicked_category and not coord.is_rolling and not game_over:
                         for i, sprite in enumerate(self.dice_sprites):
                             if sprite.contains_point(event.pos):
-                                coord.toggle_hold(i)
-                                self.sounds.play_click()
+                                adapter.do_hold(i)
                                 break
 
             # Handle button clicks (only if not currently rolling and human turn)
-            if is_human_turn and not self.showing_history and not self.showing_help and self.confirm_zero_category is None and self.roll_button.handle_event(event) and not coord.is_rolling:
-                coord.roll_dice()
-                if coord.is_rolling:
-                    self.sounds.play_roll()
+            if is_human_turn and not adapter.showing_history and not adapter.showing_help and adapter.confirm_zero_category is None and self.roll_button.handle_event(event) and not coord.is_rolling:
+                adapter.do_roll()
 
             # Handle play again button (only when game is over)
             if game_over and self.play_again_button.handle_event(event):
-                self._save_scores()
-                coord.reset_game()
-                self._game_over_sound_played = False
-                self._scores_saved = False
-                self.showing_replay = False
-
-    def _try_score_category(self, cat):
-        """Attempt to score a category, showing confirmation if it would score 0.
-
-        If the score would be 0, sets confirm_zero_category instead of scoring.
-        Otherwise scores immediately.
-        """
-        coord = self.coordinator
-        if coord.scorecard.is_filled(cat) or coord.rolls_used == 0:
-            return
-        score = calculate_score_in_context(cat, coord.dice, coord.scorecard)
-        if score == 0:
-            self.confirm_zero_category = cat
-        else:
-            if coord.select_category(cat):
-                self.sounds.play_score()
-                self.kb_selected_index = None
-
-    def _kb_navigate_category(self, direction):
-        """Move keyboard category selection to the next/previous unfilled category.
-
-        Args:
-            direction: +1 for forward, -1 for backward
-        """
-        scorecard = self.coordinator.scorecard
-        unfilled = [i for i, cat in enumerate(self.category_order) if not scorecard.is_filled(cat)]
-        if not unfilled:
-            return
-
-        if self.kb_selected_index is None:
-            # Start at first (forward) or last (backward) unfilled category
-            self.kb_selected_index = unfilled[0] if direction > 0 else unfilled[-1]
-        else:
-            # Find next unfilled in the given direction, wrapping around
-            if direction > 0:
-                candidates = [i for i in unfilled if i > self.kb_selected_index]
-                self.kb_selected_index = candidates[0] if candidates else unfilled[0]
-            else:
-                candidates = [i for i in unfilled if i < self.kb_selected_index]
-                self.kb_selected_index = candidates[-1] if candidates else unfilled[-1]
-
-        # Clear mouse hover to avoid dual highlights
-        self.hovered_category = None
-
-    def _save_scores(self):
-        """Persist game results to disk. Called once before reset_game()."""
-        if self._scores_saved:
-            return
-        self._scores_saved = True
-        coord = self.coordinator
-
-        if coord.multiplayer:
-            results = []
-            for i in range(coord.num_players):
-                name, strategy = coord.player_configs[i]
-                player_type = "human" if strategy is None else strategy.__class__.__name__.replace("Strategy", "").lower()
-                score = coord.all_scorecards[i].get_grand_total()
-                results.append({"name": name, "score": score, "player_type": player_type})
-            record_multiplayer_scores(results)
-        else:
-            score = coord.scorecard.get_grand_total()
-            if coord.ai_strategy:
-                player_type = coord.ai_strategy.__class__.__name__.replace("Strategy", "").lower()
-            else:
-                player_type = "human"
-            record_score(score, player_type=player_type)
+                adapter.do_reset()
 
     def update(self):
-        """Update animation display values, then tick the coordinator."""
+        """Update animation display values, then tick via the adapter."""
         coord = self.coordinator
 
-        # Snapshot state before tick for detecting AI transitions
+        # Snapshot rolling state before tick (for bounce detection)
         was_rolling = coord.is_rolling
-        round_before = coord.current_round
-        was_game_over = coord.game_over
 
         # During rolling, randomize display values for unheld dice (GUI-only animation)
         if coord.is_rolling:
@@ -750,14 +688,14 @@ class YahtzeeGame:
                 if not die.held:
                     self.animation_dice_values[i] = random.randint(1, 6)
 
-        # Tick the coordinator's state machine
-        coord.tick()
+        # Tick the coordinator and update adapter state (sounds, flash, game over)
+        events = self.adapter.update()
 
         # After tick, if rolling just finished, sync animation values to final
         if not coord.is_rolling:
             self.animation_dice_values = [die.value for die in coord.dice]
 
-        # Trigger bounce when rolling just ended (was_rolling → not rolling)
+        # Trigger bounce when rolling just ended
         if was_rolling and not coord.is_rolling:
             for i, die in enumerate(coord.dice):
                 if not die.held:
@@ -770,36 +708,6 @@ class YahtzeeGame:
                 self.bounce_timers[i] += 1
                 if self.bounce_timers[i] >= self.bounce_duration:
                     self.bounce_active[i] = False
-
-        # AI sound triggers: detect transitions caused by tick()
-        if not coord.is_current_player_human:
-            # AI started rolling
-            if coord.is_rolling and not was_rolling:
-                self.sounds.play_roll()
-            # AI scored (round advanced or game ended)
-            if (coord.current_round != round_before or
-                    (coord.game_over and not was_game_over)):
-                self.sounds.play_score()
-
-        # Game over fanfare and score saving (once, for any mode)
-        if coord.game_over and not self._game_over_sound_played:
-            self.sounds.play_fanfare()
-            self._game_over_sound_played = True
-            self._save_scores()
-
-        # Score flash: consume signal from coordinator
-        if coord.last_scored_category is not None:
-            self.score_flash_category = coord.last_scored_category
-            self.score_flash_timer = 0
-            coord.last_scored_category = None
-            self.kb_selected_index = None  # Clear keyboard selection on new turn
-            self.confirm_zero_category = None  # Clear confirmation on new turn
-
-        # Advance flash timer
-        if self.score_flash_category is not None:
-            self.score_flash_timer += 1
-            if self.score_flash_timer >= self.score_flash_duration:
-                self.score_flash_category = None
 
     def _draw_category_row(self, cat, scorecard, dice, coord, font, scorecard_x, col_width, y):
         """Draw a single category row in the scorecard with proper theming."""
@@ -819,7 +727,7 @@ class YahtzeeGame:
             pygame.draw.rect(self.screen, flash_color, cat_rect, border_radius=5)
         elif coord.ai_showing_score_choice and cat == coord.ai_score_choice_category:
             pygame.draw.rect(self.screen, self._ai_choice_highlight(), cat_rect, border_radius=5)
-        elif not scorecard.is_filled(cat) and (self.hovered_category == cat or (self.kb_selected_index is not None and self.category_order[self.kb_selected_index] == cat)):
+        elif not scorecard.is_filled(cat) and (self.hovered_category == cat or (self.kb_selected_index is not None and CATEGORY_ORDER[self.kb_selected_index] == cat)):
             pygame.draw.rect(self.screen, self._hover_color(), cat_rect, border_radius=5)
 
         name_text = font.render(cat.value, True, self._text_color())
@@ -922,7 +830,7 @@ class YahtzeeGame:
             if self.hovered_category is not None:
                 tooltip_cat = self.hovered_category
             elif self.kb_selected_index is not None:
-                tooltip_cat = self.category_order[self.kb_selected_index]
+                tooltip_cat = CATEGORY_ORDER[self.kb_selected_index]
             if tooltip_cat is not None and not scorecard.is_filled(tooltip_cat):
                 self._draw_tooltip(tooltip_cat, scorecard_x)
 
@@ -1152,7 +1060,7 @@ class YahtzeeGame:
             stats_y += 24
 
         # High scores section
-        high_scores = get_high_scores(player_type="human", limit=5)
+        high_scores = self.adapter.get_high_scores(limit=5)
         if high_scores:
             hs_font = self._font(28)
             hs_label = hs_font.render("Top Human Scores", True, header_color)
@@ -1400,10 +1308,8 @@ class YahtzeeGame:
                          (panel_x + 20, header_y + 25),
                          (panel_x + panel_w - 20, header_y + 25))
 
-        # Score entries (apply filters)
-        p_filter = None if self.history_filter_player == "all" else self.history_filter_player
-        m_filter = None if self.history_filter_mode == "all" else self.history_filter_mode
-        entries = get_recent_scores_filtered(limit=20, player_type=p_filter, mode=m_filter)
+        # Score entries (use adapter's filtered history)
+        entries = self.adapter.get_filtered_history(limit=20)
         entry_font = self._font(24)
         row_y = header_y + 35
 
@@ -1835,18 +1741,7 @@ def _prompt_resume(screen, clock):
 
 def _apply_settings(game):
     """Apply persisted settings to a game instance at startup."""
-    settings = load_settings()
-    game.colorblind_mode = settings.get("colorblind_mode", False)
-    game.sounds._enabled = settings.get("sound_enabled", True)
-    game.dark_mode = settings.get("dark_mode", False)
-    # Apply persisted speed (only if not overridden by CLI --speed)
-    saved_speed = settings.get("speed", "normal")
-    if saved_speed in ("slow", "normal", "fast"):
-        game.coordinator.change_speed(0)  # no-op, but we set directly:
-        from game_coordinator import SPEED_PRESETS, SPEED_NAMES
-        if saved_speed in SPEED_PRESETS:
-            game.coordinator.speed_name = saved_speed
-            game.coordinator.ai_delay, game.coordinator.roll_duration, game.coordinator.ai_hold_show_duration = SPEED_PRESETS[saved_speed]
+    game.adapter.load_settings()
 
 
 def main():
