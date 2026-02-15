@@ -51,6 +51,7 @@ function sendAction(action, data) {
 
 function render(s) {
     applyTheme(s);
+    updatePageTitle(s);
     renderRoundInfo(s);
     renderPlayerBar(s);
     renderDice(s);
@@ -60,6 +61,23 @@ function render(s) {
     renderTurnLog(s);
     renderScorecard(s);
     renderOverlays(s);
+}
+
+function updatePageTitle(s) {
+    if (s.game_over) {
+        if (s.multiplayer) {
+            const totals = s.all_scorecards.map(sc => sc.grand_total);
+            const winnerIdx = totals.indexOf(Math.max(...totals));
+            document.title = `Game Over - ${s.player_configs[winnerIdx].name} wins | Yahtzee`;
+        } else {
+            document.title = `Game Over - ${s.scorecard.grand_total} | Yahtzee`;
+        }
+    } else if (s.multiplayer) {
+        const name = s.player_configs[s.current_player_index].name;
+        document.title = `Round ${s.current_round}/13 - ${name}'s turn | Yahtzee`;
+    } else {
+        document.title = `Round ${s.current_round}/13 | Yahtzee`;
+    }
 }
 
 function applyTheme(s) {
