@@ -47,6 +47,21 @@ body {
     min-height: 100vh;
 }
 
+/* ── Connection banner ───────────────────────────────────────────────────── */
+
+#connection-banner {
+    position: fixed; top: 0; left: 0; width: 100%; z-index: 200;
+    background: #e67e22; color: white; text-align: center;
+    padding: 8px; font-weight: bold; font-size: 0.95em;
+    animation: slide-down 0.3s ease-out;
+}
+#connection-banner.hidden { display: none; }
+
+@keyframes slide-down {
+    from { transform: translateY(-100%); }
+    to { transform: translateY(0); }
+}
+
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 
 #app { max-width: 1000px; margin: 0 auto; padding: 10px 20px; }

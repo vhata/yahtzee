@@ -29,9 +29,10 @@ function connect() {
     const params = location.search;  // Forward game config params
     ws = new WebSocket(`${proto}//${location.host}/ws${params}`);
 
-    ws.onopen = () => {};
-    ws.onclose = () => setTimeout(connect, 2000);
-    ws.onerror = () => {};
+    const banner = document.getElementById("connection-banner");
+    ws.onopen = () => banner.classList.add("hidden");
+    ws.onclose = () => { banner.classList.remove("hidden"); setTimeout(connect, 2000); };
+    ws.onerror = () => banner.classList.remove("hidden");
 
     ws.onmessage = (event) => {
         prevState = state;
