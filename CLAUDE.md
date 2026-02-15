@@ -2,13 +2,15 @@
 
 ## Architecture
 
-- **game_engine.py** — Pure game logic. `GameState` is immutable (frozen dataclass). All engine functions return new state. No pygame dependency.
-- **game_coordinator.py** — `GameCoordinator` owns all game state, timers, AI pacing. No pygame dependency. main.py delegates to this.
+**IMPORTANT: Strict separation between game logic and UI.** Only `main.py` and `sounds.py` may import pygame. All other modules must remain pure Python with no pygame dependency. This enables headless testing and keeps the engine reusable.
+
+- **game_engine.py** — Pure game logic. `GameState` is immutable (frozen dataclass). All engine functions return new state. **No pygame.**
+- **game_coordinator.py** — `GameCoordinator` owns all game state, timers, AI pacing. **No pygame.** main.py delegates to this.
 - **main.py** — Thin pygame rendering shell. Only owns display/animation concerns.
-- **ai.py** — AI strategies implement `YahtzeeStrategy.choose_action()`, returning `RollAction` or `ScoreAction`.
-- **dice_tables.py** — Precomputed combinatorics for `OptimalStrategy`.
-- **score_history.py** — Score persistence to `~/.yahtzee_scores.json`.
-- **sounds.py** — Synthesized PCM waveforms via struct+math (no numpy).
+- **ai.py** — AI strategies implement `YahtzeeStrategy.choose_action()`, returning `RollAction` or `ScoreAction`. **No pygame.**
+- **dice_tables.py** — Precomputed combinatorics for `OptimalStrategy`. **No pygame.**
+- **score_history.py** — Score persistence to `~/.yahtzee_scores.json`. **No pygame.**
+- **sounds.py** — Synthesized PCM waveforms via struct+math (no numpy). Uses pygame.mixer for playback only.
 
 ## Development
 
