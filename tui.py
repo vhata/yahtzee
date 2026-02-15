@@ -645,7 +645,8 @@ class YahtzeeApp(App):
             self.query_one("#game-over-display", GameOverDisplay).refresh()
             self.query_one("#roll-btn", Button).disabled = not coord_can_roll(self.coordinator)
         except Exception:
-            pass
+            import logging
+            logging.getLogger(__name__).debug("Refresh error", exc_info=True)
 
     def _round_text(self):
         """Build round/player bar text."""
