@@ -129,7 +129,7 @@ body {
 
 #scorecard tr.total-row td { font-weight: bold; padding: 8px 12px; }
 
-#scorecard tr.category-row { cursor: pointer; transition: background 0.15s; }
+#scorecard tr.category-row { cursor: pointer; transition: background 0.15s; height: 44px; }
 #scorecard tr.category-row:hover { background: var(--hover-bg); }
 #scorecard tr.category-row.selected { background: var(--hover-bg); font-weight: bold; }
 #scorecard tr.category-row.filled { cursor: default; }
@@ -201,7 +201,7 @@ body {
     display: flex; gap: 6px; z-index: 50;
 }
 #toolbar button {
-    width: 36px; height: 36px; border: 2px solid var(--panel-border);
+    width: 44px; height: 44px; border: 2px solid var(--panel-border);
     border-radius: 8px; background: var(--panel-bg); cursor: pointer;
     font-size: 16px; display: flex; align-items: center; justify-content: center;
 }
@@ -231,7 +231,7 @@ body {
     #main { flex-direction: column; }
     #dice-area { min-width: auto; }
     #dice-container { gap: 4px; flex-wrap: nowrap; }
-    .die { width: 56px; height: 56px; flex-shrink: 1; min-width: 44px; }
+    .die { width: 56px; height: 56px; flex-shrink: 1; min-width: 48px; }
     .die .dot { width: 8px; height: 8px; }
     .held-label { font-size: 9px !important; }
     #header h1 { font-size: 1.8em; }
