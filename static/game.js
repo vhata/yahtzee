@@ -68,12 +68,12 @@ function updatePageTitle(s) {
         if (s.multiplayer) {
             const totals = s.all_scorecards.map(sc => sc.grand_total);
             const winnerIdx = totals.indexOf(Math.max(...totals));
-            document.title = `Game Over - ${s.player_configs[winnerIdx].name} wins | Yahtzee`;
+            document.title = `Game Over - ${escapeHtml(s.player_configs[winnerIdx].name)} wins | Yahtzee`;
         } else {
             document.title = `Game Over - ${s.scorecard.grand_total} | Yahtzee`;
         }
     } else if (s.multiplayer) {
-        const name = s.player_configs[s.current_player_index].name;
+        const name = escapeHtml(s.player_configs[s.current_player_index].name);
         document.title = `Round ${s.current_round}/13 - ${name}'s turn | Yahtzee`;
     } else {
         document.title = `Round ${s.current_round}/13 | Yahtzee`;
@@ -105,7 +105,7 @@ function renderPlayerBar(s) {
         const style = active
             ? `background: ${playerColor(i)}; border-color: ${playerColor(i)};`
             : `border-color: ${playerColor(i)}; color: ${playerColor(i)};`;
-        return `<span class="${cls}" style="${style}">${p.name}: ${score}</span>`;
+        return `<span class="${cls}" style="${style}">${escapeHtml(p.name)}: ${score}</span>`;
     }).join("");
 }
 
@@ -199,7 +199,7 @@ function renderTurnLog(s) {
         const score = entry.score != null ? entry.score : "?";
         const color = playerColor(entry.player_index);
         html += `<div class="turn-log-entry" style="border-left: 3px solid ${color};">`;
-        html += `<span class="turn-log-player" style="color: ${color};">${entry.player_name}</span> `;
+        html += `<span class="turn-log-player" style="color: ${color};">${escapeHtml(entry.player_name)}</span> `;
         if (rolls) {
             html += `<span class="turn-log-rolls">${rolls} →</span> `;
         }
@@ -345,12 +345,12 @@ function renderGameOver(s) {
         const winnerIdx = totals.indexOf(maxScore);
         const winnerName = s.player_configs[winnerIdx].name;
 
-        html += `<p class="winner">${winnerName} wins!</p>`;
+        html += `<p class="winner">${escapeHtml(winnerName)} wins!</p>`;
         html += "<table>";
         s.player_configs.forEach((p, i) => {
             const score = totals[i];
             const marker = i === winnerIdx ? " ★" : "";
-            html += `<tr><td>${p.name}</td><td><strong>${score}</strong>${marker}</td></tr>`;
+            html += `<tr><td>${escapeHtml(p.name)}</td><td><strong>${score}</strong>${marker}</td></tr>`;
             if (p.is_human) {
                 const pct = (score / OPTIMAL_EXPECTED * 100).toFixed(0);
                 html += `<tr><td></td><td class="pct-optimal">${pct}% of optimal</td></tr>`;
@@ -451,6 +451,12 @@ document.addEventListener("keydown", (e) => {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ""; }
+
+function escapeHtml(text) {
+    const el = document.createElement("span");
+    el.textContent = text;
+    return el.innerHTML;
+}
 
 const PLAYER_COLORS = ["#4682b4", "#b45050", "#50a050", "#a07832"];
 function playerColor(i) { return PLAYER_COLORS[i % PLAYER_COLORS.length]; }
