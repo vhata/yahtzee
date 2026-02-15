@@ -29,12 +29,9 @@ function connect() {
     const params = location.search;  // Forward game config params
     ws = new WebSocket(`${proto}//${location.host}/ws${params}`);
 
-    ws.onopen = () => console.log("Connected");
-    ws.onclose = () => {
-        console.log("Disconnected");
-        setTimeout(connect, 2000);
-    };
-    ws.onerror = (e) => console.error("WebSocket error:", e);
+    ws.onopen = () => {};
+    ws.onclose = () => setTimeout(connect, 2000);
+    ws.onerror = () => {};
 
     ws.onmessage = (event) => {
         prevState = state;
