@@ -1304,11 +1304,16 @@ def main():
         if len(args.players) > 4:
             print("Error: --players supports at most 4 players")
             sys.exit(1)
+        if args.names and len(args.names) != len(args.players):
+            print(f"Error: --names count ({len(args.names)}) must match --players count ({len(args.players)})")
+            sys.exit(1)
 
         players = []
         for i, token in enumerate(args.players):
             strategy = _make_strategy(token)
-            if strategy is None:
+            if args.names:
+                name = args.names[i]
+            elif strategy is None:
                 name = f"Player {i + 1}"
             else:
                 ai_name = strategy.__class__.__name__.replace("Strategy", "")
