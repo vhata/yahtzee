@@ -215,9 +215,12 @@ body {
 @media (max-width: 768px) {
     #main { flex-direction: column; }
     #dice-area { min-width: auto; }
-    #dice-container { gap: 6px; }
-    .die { width: 56px; height: 56px; }
+    #dice-container { gap: 4px; flex-wrap: nowrap; }
+    .die { width: 56px; height: 56px; flex-shrink: 1; min-width: 44px; }
     .die .dot { width: 8px; height: 8px; }
+    .held-label { font-size: 9px !important; }
     #header h1 { font-size: 1.8em; }
     .overlay-panel { padding: 16px 20px; }
+    #app { padding: 10px 6px; }
+    .die-wrapper { min-width: 0; }
 }
