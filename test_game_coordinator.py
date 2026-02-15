@@ -1145,6 +1145,18 @@ class TestSmokeRendering:
         for cat in Category:
             assert cat in CATEGORY_TOOLTIPS, f"Missing tooltip for {cat}"
 
+    def test_draw_with_bounce_active(self, headless_pygame):
+        """Dice with active bounce animation render without error."""
+        random.seed(42)
+        game = self._make_game(headless_pygame)
+        game.coordinator.roll_dice()
+        tick_until(game.coordinator, lambda c: not c.is_rolling)
+        # Simulate bounce being mid-animation
+        for i in range(5):
+            game.bounce_active[i] = True
+            game.bounce_timers[i] = 5
+        game.draw()
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 9. AUTOSAVE

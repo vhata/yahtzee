@@ -390,6 +390,11 @@ class YahtzeeGame:
         # Animation state (GUI concern only — randomized display values during roll)
         self.animation_dice_values = [die.value for die in self.coordinator.dice]
 
+        # Bounce animation state — dice hop when landing after a roll
+        self.bounce_active = [False] * 5
+        self.bounce_timers = [0] * 5
+        self.bounce_duration = 15  # frames
+
         # Sound
         self.sounds = SoundManager()
         self._game_over_sound_played = False
@@ -751,6 +756,20 @@ class YahtzeeGame:
         # After tick, if rolling just finished, sync animation values to final
         if not coord.is_rolling:
             self.animation_dice_values = [die.value for die in coord.dice]
+
+        # Trigger bounce when rolling just ended (was_rolling → not rolling)
+        if was_rolling and not coord.is_rolling:
+            for i, die in enumerate(coord.dice):
+                if not die.held:
+                    self.bounce_active[i] = True
+                    self.bounce_timers[i] = 0
+
+        # Advance bounce timers
+        for i in range(5):
+            if self.bounce_active[i]:
+                self.bounce_timers[i] += 1
+                if self.bounce_timers[i] >= self.bounce_duration:
+                    self.bounce_active[i] = False
 
         # AI sound triggers: detect transitions caused by tick()
         if not coord.is_current_player_human:
@@ -1690,7 +1709,13 @@ class YahtzeeGame:
                             dice_color=dice_c, dot_color=dot_c,
                             shadow_color=shadow_c, border_color=border_c)
             else:
-                sprite.draw(self.screen, display_state, colorblind=self.colorblind_mode,
+                # Apply bounce offset (damped upward hop after landing)
+                bounce_y = 0
+                if self.bounce_active[i]:
+                    t = self.bounce_timers[i] / self.bounce_duration
+                    bounce_y = int(-8 * math.sin(t * math.pi) * (1 - t))
+                sprite.draw(self.screen, display_state, offset_y=bounce_y,
+                            colorblind=self.colorblind_mode,
                             dice_color=dice_c, dot_color=dot_c,
                             shadow_color=shadow_c, border_color=border_c)
 
