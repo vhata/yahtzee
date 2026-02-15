@@ -472,7 +472,9 @@ function playTone(freq, duration, volume) {
 // Use mousedown (not click) because click requires mousedown+mouseup on the
 // same element, but the DOM is rebuilt between frames so the mousedown target
 // may be gone by the time mouseup fires, silently dropping the click.
-document.getElementById("dice-container").addEventListener("mousedown", (e) => {
+// Touch listeners share the same handlers but call preventDefault() to avoid
+// double-fire (touchstart followed by synthesized mousedown).
+function handleDieTap(e) {
     const dieEl = e.target.closest(".die");
     if (!dieEl || !state) return;
     const idx = parseInt(dieEl.dataset.dieIndex);
@@ -480,23 +482,31 @@ document.getElementById("dice-container").addEventListener("mousedown", (e) => {
     if (state.is_human_turn && !state.is_rolling && !state.game_over && state.rolls_used > 0) {
         sendAction("hold", { die_index: idx });
     }
-});
+}
 
-document.getElementById("scorecard-body").addEventListener("mousedown", (e) => {
+function handleScoreTap(e) {
     const tr = e.target.closest("tr[data-category]");
     if (!tr || !state) return;
     const cat = tr.dataset.category;
     if (state.is_human_turn && !state.game_over && !state.is_rolling && state.rolls_used > 0) {
         sendAction("score", { category: cat });
     }
-});
+}
 
-document.getElementById("scorecard-body").addEventListener("mouseenter", (e) => {
+const diceContainer = document.getElementById("dice-container");
+diceContainer.addEventListener("mousedown", handleDieTap);
+diceContainer.addEventListener("touchstart", (e) => { e.preventDefault(); handleDieTap(e); }, { passive: false });
+
+const scorecardBody = document.getElementById("scorecard-body");
+scorecardBody.addEventListener("mousedown", handleScoreTap);
+scorecardBody.addEventListener("touchstart", (e) => { e.preventDefault(); handleScoreTap(e); }, { passive: false });
+
+scorecardBody.addEventListener("mouseenter", (e) => {
     const tr = e.target.closest("tr[data-category]");
     if (tr) sendAction("hover", { category: tr.dataset.category });
 }, true);  // useCapture for mouseenter delegation
 
-document.getElementById("scorecard-body").addEventListener("mouseleave", (e) => {
+scorecardBody.addEventListener("mouseleave", (e) => {
     const tr = e.target.closest("tr[data-category]");
     if (tr) sendAction("clear_hover");
 }, true);

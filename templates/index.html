@@ -35,6 +35,12 @@
         .quick-start button { padding: 10px 20px; border: 2px solid #2980b9;
                               border-radius: 6px; background: white; cursor: pointer; font-size: 14px; }
         .quick-start button:hover { background: #ecf0f1; }
+        .ai-info {
+            background: #f0f4f8; border: 1px solid #ddd; border-radius: 6px;
+            padding: 12px 16px; margin-top: 16px; font-size: 0.9em;
+        }
+        .ai-info ul { margin: 6px 0 0 20px; }
+        .ai-info li { margin-bottom: 2px; }
     </style>
 </head>
 <body>
@@ -55,6 +61,16 @@
             <button onclick="startGame('ai=true&strategy=optimal')">vs Optimal AI</button>
         </div>
 
+        <div class="ai-info">
+            <strong>AI Strategies:</strong>
+            <ul>
+                <li><strong>Greedy</strong> — picks highest immediate score (~180 avg)</li>
+                <li><strong>EV</strong> — maximizes expected value per turn (~205 avg)</li>
+                <li><strong>Optimal</strong> — full dynamic programming, best play (~223 avg)</li>
+                <li><strong>Random</strong> — random choices, for fun (~110 avg)</li>
+            </ul>
+        </div>
+
         <hr style="margin: 20px 0;">
 
         <h3>Custom Game</h3>
@@ -62,10 +78,10 @@
             <div class="player-row" data-index="0">
                 <select class="player-type">
                     <option value="human">Human</option>
-                    <option value="greedy">Greedy AI</option>
-                    <option value="ev">EV AI</option>
-                    <option value="optimal">Optimal AI</option>
-                    <option value="random">Random AI</option>
+                    <option value="greedy" title="Picks highest immediate score (~180 avg)">Greedy AI</option>
+                    <option value="ev" title="Maximizes expected value per turn (~205 avg)">EV AI</option>
+                    <option value="optimal" title="Full dynamic programming, best play (~223 avg)">Optimal AI</option>
+                    <option value="random" title="Random choices (~110 avg)">Random AI</option>
                 </select>
                 <input type="text" class="player-name" placeholder="Name (optional)">
             </div>
@@ -97,10 +113,10 @@
             row.innerHTML = `
                 <select class="player-type">
                     <option value="human">Human</option>
-                    <option value="greedy">Greedy AI</option>
-                    <option value="ev">EV AI</option>
-                    <option value="optimal">Optimal AI</option>
-                    <option value="random">Random AI</option>
+                    <option value="greedy" title="Picks highest immediate score (~180 avg)">Greedy AI</option>
+                    <option value="ev" title="Maximizes expected value per turn (~205 avg)">EV AI</option>
+                    <option value="optimal" title="Full dynamic programming, best play (~223 avg)">Optimal AI</option>
+                    <option value="random" title="Random choices (~110 avg)">Random AI</option>
                 </select>
                 <input type="text" class="player-name" placeholder="Name (optional)">
                 <button class="btn-remove" onclick="removePlayer(this)">×</button>

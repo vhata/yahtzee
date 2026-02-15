@@ -6,9 +6,12 @@ Each WebSocket connection gets its own GameCoordinator instance.
 State is pushed to the client as JSON snapshots at ~30 FPS during active play.
 """
 import json
+import logging
 import threading
 import time
 import sys
+
+logger = logging.getLogger(__name__)
 
 from flask import Flask, render_template, request
 from flask_sock import Sock
@@ -97,6 +100,7 @@ def websocket(ws):
                     snapshot = adapter.get_game_snapshot()
                 ws.send(json.dumps(snapshot))
             except Exception:
+                logger.error("Tick loop error", exc_info=True)
                 running = False
                 break
             time.sleep(1 / 30)
@@ -112,12 +116,13 @@ def websocket(ws):
             try:
                 action = json.loads(data)
             except json.JSONDecodeError:
+                logger.warning("Invalid JSON from client: %s", data)
                 continue
 
             with lock:
                 _handle_action(adapter, action)
     except Exception:
-        pass
+        logger.error("WebSocket receive error", exc_info=True)
     finally:
         running = False
 
