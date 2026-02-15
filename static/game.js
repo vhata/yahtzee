@@ -122,6 +122,7 @@ function renderDice(s) {
         el.className = "die";
         el.dataset.dieIndex = i;  // For event delegation
         el.setAttribute("role", "button");
+        el.tabIndex = 0;
 
         if (s.rolls_used === 0 && !s.is_rolling) {
             el.classList.add("in-cup");
