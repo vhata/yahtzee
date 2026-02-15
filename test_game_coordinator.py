@@ -1114,3 +1114,109 @@ class TestSmokeRendering:
         while not game.coordinator.game_over:
             game.update()
         game.draw()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 9. AUTOSAVE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestAutosave:
+    """Tests for game state autosave and restore."""
+
+    def test_single_player_save_load_roundtrip(self, tmp_path):
+        """Save and load a single-player game state — fields should match."""
+        random.seed(42)
+        path = tmp_path / "autosave.json"
+        c = GameCoordinator()
+        c.roll_dice()
+        tick_until(c, lambda c: not c.is_rolling)
+        # Score in first available category
+        c.select_category(Category.ONES)
+
+        c.save_state(path=path)
+        assert path.exists()
+
+        loaded = GameCoordinator.load_state(path=path)
+        assert loaded is not None
+        # Autosave file deleted after successful load
+        assert not path.exists()
+
+        # Verify key fields match
+        assert loaded.rolls_used == c.rolls_used
+        assert loaded.current_round == c.current_round
+        assert loaded.game_over == c.game_over
+        assert loaded.multiplayer == c.multiplayer
+        # Scorecard should have ONES filled
+        assert loaded.scorecard.is_filled(Category.ONES)
+
+    def test_multiplayer_save_load_roundtrip(self, tmp_path):
+        """Save and load a multiplayer game state — fields should match."""
+        random.seed(99)
+        path = tmp_path / "autosave.json"
+        players = [("Alice", None), ("Bot", GreedyStrategy())]
+        c = GameCoordinator(players=players, speed="fast")
+        # Skip turn transition
+        tick_until(c, lambda c: not c.turn_transition)
+        c.roll_dice()
+        tick_until(c, lambda c: not c.is_rolling)
+        c.select_category(Category.ONES)
+
+        c.save_state(path=path)
+        assert path.exists()
+
+        loaded = GameCoordinator.load_state(path=path)
+        assert loaded is not None
+        assert loaded.multiplayer
+        assert loaded.num_players == 2
+        assert loaded.player_configs[0][0] == "Alice"
+        assert loaded.player_configs[1][0] == "Bot"
+        assert loaded.player_configs[0][1] is None  # human
+        assert loaded.player_configs[1][1] is not None  # AI
+
+    def test_corrupt_file_returns_none(self, tmp_path):
+        """Corrupt autosave file returns None gracefully."""
+        path = tmp_path / "autosave.json"
+        path.write_text("this is not valid json {{{")
+        assert GameCoordinator.load_state(path=path) is None
+
+    def test_missing_file_returns_none(self, tmp_path):
+        """Missing autosave file returns None."""
+        path = tmp_path / "no_such_file.json"
+        assert GameCoordinator.load_state(path=path) is None
+
+    def test_clear_autosave(self, tmp_path):
+        """clear_autosave removes the file."""
+        path = tmp_path / "autosave.json"
+        path.write_text("{}")
+        GameCoordinator.clear_autosave(path=path)
+        assert not path.exists()
+
+    def test_clear_autosave_missing_file(self, tmp_path):
+        """clear_autosave on missing file doesn't raise."""
+        path = tmp_path / "no_such_file.json"
+        GameCoordinator.clear_autosave(path=path)  # Should not raise
+
+    def test_save_state_skips_when_game_over(self, tmp_path):
+        """save_state() does nothing when the game is over."""
+        random.seed(42)
+        path = tmp_path / "autosave.json"
+        c = GameCoordinator(ai_strategy=GreedyStrategy(), speed="fast")
+        tick_until(c, lambda c: c.game_over, max_ticks=500000)
+        assert c.game_over
+        c.save_state(path=path)
+        # File should not be created since game is already over
+        assert not path.exists()
+
+    def test_reset_clears_autosave(self, tmp_path):
+        """reset_game() clears the autosave file."""
+        random.seed(42)
+        path = tmp_path / "autosave.json"
+        c = GameCoordinator()
+        c.roll_dice()
+        tick_until(c, lambda c: not c.is_rolling)
+        c.save_state(path=path)
+        assert path.exists()
+
+        # Override default path for clear
+        c.clear_autosave(path=path)
+        assert not path.exists()

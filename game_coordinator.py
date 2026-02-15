@@ -5,7 +5,9 @@ Owns game state, timers, AI pacing, and the per-frame state machine.
 The GUI layer (main.py) delegates to this and only handles rendering + events.
 """
 import argparse
+import json
 import sys
+from pathlib import Path
 
 from game_engine import (
     Category, Scorecard, calculate_score,
@@ -283,17 +285,27 @@ class GameCoordinator:
                 self.mp_state = mp_select_category(self.mp_state, category)
                 self.last_scored_category = category
                 self._on_turn_scored()
+                self._autosave_if_active()
                 return True
         else:
             if can_select_category(self.state, category):
                 self._push_undo()
                 self.state = engine_select_category(self.state, category)
                 self.last_scored_category = category
+                self._autosave_if_active()
                 return True
         return False
 
+    def _autosave_if_active(self):
+        """Save state after scoring, or clear autosave if game is over."""
+        if self.game_over:
+            self.clear_autosave()
+        else:
+            self.save_state()
+
     def reset_game(self):
         """Reset to start a new game, preserving speed settings."""
+        self.clear_autosave()
         if self.multiplayer:
             self.mp_state = MultiplayerGameState.create_initial(len(self.player_configs))
             self.turn_transition = True
@@ -379,6 +391,7 @@ class GameCoordinator:
                     self.ai_showing_score_choice = False
                     self.ai_score_choice_category = None
                     self._ai_score_choice_action = None
+                self._autosave_if_active()
             return
 
         # AI controller — paces decisions with a timer
@@ -453,6 +466,162 @@ class GameCoordinator:
         if not self.mp_state.game_over:
             self.turn_transition = True
             self.turn_transition_timer = 0
+
+    # ── Autosave ──────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _default_autosave_path():
+        """Return the default path for the autosave file."""
+        return Path.home() / ".yahtzee_autosave.json"
+
+    @staticmethod
+    def _strategy_to_token(strategy):
+        """Convert a strategy instance to a CLI token string."""
+        if strategy is None:
+            return "human"
+        name = strategy.__class__.__name__.replace("Strategy", "").lower()
+        return name
+
+    @staticmethod
+    def _scorecard_to_dict(scorecard):
+        """Serialize a Scorecard to a JSON-safe dict."""
+        return {
+            "scores": {cat.value: score for cat, score in scorecard.scores.items() if score is not None},
+            "yahtzee_bonus_count": scorecard.yahtzee_bonus_count,
+        }
+
+    @staticmethod
+    def _dict_to_scorecard(data):
+        """Deserialize a dict back to a Scorecard."""
+        sc = Scorecard()
+        cat_by_name = {cat.value: cat for cat in Category}
+        for name, score in data.get("scores", {}).items():
+            cat = cat_by_name.get(name)
+            if cat is not None:
+                sc.scores[cat] = score
+        sc.yahtzee_bonus_count = data.get("yahtzee_bonus_count", 0)
+        return sc
+
+    def save_state(self, path=None):
+        """Serialize current game state to JSON for autosave.
+
+        Writes to ~/.yahtzee_autosave.json. Skipped if game is over or
+        no rolls have happened yet (nothing worth saving).
+        """
+        if self.game_over:
+            return
+        if path is None:
+            path = self._default_autosave_path()
+        path = Path(path)
+
+        data = {
+            "dice": [{"value": d.value, "held": d.held} for d in self.dice],
+            "rolls_used": self.rolls_used,
+            "current_round": self.current_round,
+            "speed": self.speed_name,
+        }
+
+        if self.multiplayer:
+            data["multiplayer"] = True
+            data["current_player_index"] = self.mp_state.current_player_index
+            data["scorecards"] = [self._scorecard_to_dict(sc) for sc in self.mp_state.scorecards]
+            data["player_configs"] = [
+                {"name": name, "strategy": self._strategy_to_token(strategy)}
+                for name, strategy in self.player_configs
+            ]
+        else:
+            data["multiplayer"] = False
+            data["scorecard"] = self._scorecard_to_dict(self.state.scorecard)
+            data["strategy"] = self._strategy_to_token(self.ai_strategy)
+
+        try:
+            path.write_text(json.dumps(data, indent=2))
+        except OSError:
+            pass  # Silently fail — autosave is best-effort
+
+    @classmethod
+    def load_state(cls, path=None):
+        """Load autosave and return a configured GameCoordinator, or None.
+
+        Deletes the autosave file after successful load. Returns None if
+        file is missing, corrupt, or has unexpected structure.
+        """
+        if path is None:
+            path = cls._default_autosave_path()
+        path = Path(path)
+
+        try:
+            data = json.loads(path.read_text())
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            return None
+
+        try:
+            is_mp = data.get("multiplayer", False)
+            speed = data.get("speed", "normal")
+            if speed not in SPEED_PRESETS:
+                speed = "normal"
+
+            dice = tuple(
+                DieState(value=d["value"], held=d["held"]) for d in data["dice"]
+            )
+            rolls_used = data["rolls_used"]
+            current_round = data["current_round"]
+
+            if is_mp:
+                configs_data = data["player_configs"]
+                players = []
+                for cfg in configs_data:
+                    strategy = _make_strategy(cfg["strategy"])
+                    players.append((cfg["name"], strategy))
+
+                coord = cls(speed=speed, players=players)
+                scorecards = tuple(
+                    cls._dict_to_scorecard(sc_data) for sc_data in data["scorecards"]
+                )
+                coord.mp_state = MultiplayerGameState(
+                    num_players=len(players),
+                    scorecards=scorecards,
+                    current_player_index=data["current_player_index"],
+                    dice=dice,
+                    rolls_used=rolls_used,
+                    current_round=current_round,
+                    game_over=False,
+                )
+                coord.turn_transition = False
+            else:
+                strategy_token = data.get("strategy", "human")
+                ai_strategy = _make_strategy(strategy_token) if strategy_token != "human" else None
+                coord = cls(ai_strategy=ai_strategy, speed=speed)
+                scorecard = cls._dict_to_scorecard(data["scorecard"])
+                coord.state = GameState(
+                    dice=dice,
+                    scorecard=scorecard,
+                    rolls_used=rolls_used,
+                    current_round=current_round,
+                    game_over=False,
+                )
+
+            coord.ai_needs_first_roll = (rolls_used == 0)
+
+            # Successfully loaded — delete the autosave
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            return coord
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def clear_autosave(path=None):
+        """Delete the autosave file."""
+        if path is None:
+            path = GameCoordinator._default_autosave_path()
+        path = Path(path)
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _make_strategy(token):

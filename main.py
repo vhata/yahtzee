@@ -276,7 +276,7 @@ class Button:
 class YahtzeeGame:
     """Main game class for Yahtzee — thin rendering shell over GameCoordinator"""
 
-    def __init__(self, ai_strategy=None, speed="normal", players=None):
+    def __init__(self, ai_strategy=None, speed="normal", players=None, coordinator=None):
         """Initialize the game window and basic components
 
         Args:
@@ -285,6 +285,7 @@ class YahtzeeGame:
             speed: Speed preset name for AI playback ("slow", "normal", "fast").
             players: Optional list of (name, strategy_or_None) tuples for multiplayer.
                      None means single-player mode (backward compatible).
+            coordinator: Optional pre-configured GameCoordinator (for resume).
         """
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("Yahtzee")
@@ -292,9 +293,12 @@ class YahtzeeGame:
         self.running = True
 
         # All game coordination logic lives in the coordinator
-        self.coordinator = GameCoordinator(
-            ai_strategy=ai_strategy, speed=speed, players=players
-        )
+        if coordinator is not None:
+            self.coordinator = coordinator
+        else:
+            self.coordinator = GameCoordinator(
+                ai_strategy=ai_strategy, speed=speed, players=players
+            )
 
         # Dice sprites (visual representation only)
         self.dice_sprites = []
@@ -1423,10 +1427,55 @@ class YahtzeeGame:
         sys.exit()
 
 
+def _prompt_resume(screen, clock):
+    """Show a simple pygame prompt asking to resume a previous game.
+
+    Returns True if user wants to resume, False otherwise.
+    """
+    font = pygame.font.Font(None, 48)
+    small_font = pygame.font.Font(None, 32)
+
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_y:
+                    return True
+                elif event.key in (pygame.K_n, pygame.K_ESCAPE):
+                    return False
+
+        screen.fill(BACKGROUND)
+        title = font.render("Resume previous game?", True, SECTION_HEADER_COLOR)
+        title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 30))
+        screen.blit(title, title_rect)
+
+        hint = small_font.render("Y to resume,  N to start fresh", True, (100, 100, 100))
+        hint_rect = hint.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 30))
+        screen.blit(hint, hint_rect)
+
+        pygame.display.flip()
+        clock.tick(FPS)
+
+
 def main():
     """Entry point for the game"""
     args = parse_args()
     print("Yahtzee! Use --help for options, --players for multiplayer")
+
+    # Check for autosave before processing args
+    saved_coord = GameCoordinator.load_state()
+    if saved_coord is not None:
+        screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+        pygame.display.set_caption("Yahtzee")
+        clock = pygame.time.Clock()
+        if _prompt_resume(screen, clock):
+            game = YahtzeeGame(coordinator=saved_coord)
+            game.run()
+            return
+        # User declined — clear the save and continue with fresh game
+        GameCoordinator.clear_autosave()
 
     if args.players:
         # Multiplayer mode
