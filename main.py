@@ -49,6 +49,16 @@ PLAYER_COLORS = [
     (160, 120, 50),   # Gold (Player 4)
 ]
 
+# Colorblind-friendly palette alternatives
+CB_HELD_COLOR = (0, 120, 220)        # Blue instead of green
+CB_VALID_SCORE_COLOR = (0, 100, 200)  # Blue instead of green
+CB_PLAYER_COLORS = [
+    (0, 90, 180),    # Blue
+    (230, 130, 0),   # Orange
+    (0, 160, 160),   # Teal
+    (160, 80, 200),  # Purple
+]
+
 # Dice constants
 DICE_SIZE = 80
 DICE_MARGIN = 20
@@ -85,7 +95,7 @@ class DiceSprite:
         dice_rect = pygame.Rect(self.x, self.y, DICE_SIZE, DICE_SIZE)
         return dice_rect.collidepoint(pos)
 
-    def draw(self, surface, die_state, offset_x=0, offset_y=0):
+    def draw(self, surface, die_state, offset_x=0, offset_y=0, colorblind=False):
         """
         Draw the die based on its state.
 
@@ -94,6 +104,7 @@ class DiceSprite:
             die_state: DieState object with value and held status
             offset_x: X offset for animation effects
             offset_y: Y offset for animation effects
+            colorblind: If True, use colorblind-friendly held color and markers
         """
         # Apply offsets for animation effects
         x = self.x + offset_x
@@ -109,8 +120,17 @@ class DiceSprite:
 
         # Draw border - thicker and colored if held
         if die_state.held:
-            # Green highlight for held dice
-            pygame.draw.rect(surface, (50, 200, 50), dice_rect, width=5, border_radius=10)
+            held_color = CB_HELD_COLOR if colorblind else (50, 200, 50)
+            border_width = 6 if colorblind else 5
+            pygame.draw.rect(surface, held_color, dice_rect, width=border_width, border_radius=10)
+            # Colorblind: add diagonal stripe pattern for extra visual cue
+            if colorblind:
+                clip_rect = pygame.Rect(x + 4, y + 4, DICE_SIZE - 8, DICE_SIZE - 8)
+                surface.set_clip(clip_rect)
+                for i in range(-DICE_SIZE, DICE_SIZE * 2, 16):
+                    pygame.draw.line(surface, (*held_color, 60),
+                                     (x + i, y), (x + i + DICE_SIZE, y + DICE_SIZE), 2)
+                surface.set_clip(None)
         else:
             pygame.draw.rect(surface, (100, 100, 100), dice_rect, width=2, border_radius=10)
 
@@ -317,6 +337,7 @@ class YahtzeeGame:
         # UI state
         self.category_rects = {}  # Maps Category to pygame.Rect for click detection
         self.hovered_category = None
+        self.colorblind_mode = False
         self.showing_history = False
         self.showing_help = False
         self.kb_selected_index = None  # Keyboard category selection (0-12)
@@ -339,6 +360,14 @@ class YahtzeeGame:
 
         # Font cache — avoids recreating Font objects every frame
         self._font_cache = {}
+
+    def _valid_color(self):
+        """Return the valid score color based on colorblind mode."""
+        return CB_VALID_SCORE_COLOR if self.colorblind_mode else VALID_SCORE_COLOR
+
+    def _player_colors(self):
+        """Return the player color palette based on colorblind mode."""
+        return CB_PLAYER_COLORS if self.colorblind_mode else PLAYER_COLORS
 
     def _font(self, size):
         """Return a cached pygame Font of the given size."""
@@ -411,6 +440,9 @@ class YahtzeeGame:
                 # Sound toggle (M key) — not while history overlay is showing
                 if event.key == pygame.K_m and not self.showing_history:
                     self.sounds.toggle()
+                # Colorblind mode toggle (C key)
+                if event.key == pygame.K_c:
+                    self.colorblind_mode = not self.colorblind_mode
                 # Undo (Ctrl+Z) for human players
                 if event.key == pygame.K_z and (event.mod & pygame.KMOD_CTRL or event.mod & pygame.KMOD_META):
                     if coord.undo():
@@ -619,7 +651,7 @@ class YahtzeeGame:
         if coord.multiplayer:
             idx = coord.current_player_index
             name, _ = coord.player_configs[idx]
-            color = PLAYER_COLORS[idx % len(PLAYER_COLORS)]
+            color = self._player_colors()[idx % len(self._player_colors())]
             name_header = font_bold.render(f"{name}'s Scorecard", True, color)
             self.screen.blit(name_header, (scorecard_x, y))
             y += row_height + 2
@@ -659,7 +691,7 @@ class YahtzeeGame:
                 score_color = BLACK
             else:
                 score = calculate_score_in_context(cat, dice, scorecard)
-                score_color = VALID_SCORE_COLOR if score > 0 else GRAY
+                score_color = self._valid_color() if score > 0 else GRAY
 
             score_text = font.render(str(score), True, score_color)
             self.screen.blit(score_text, (scorecard_x + col_width, y))
@@ -713,7 +745,7 @@ class YahtzeeGame:
                 score_color = BLACK
             else:
                 score = calculate_score_in_context(cat, dice, scorecard)
-                score_color = VALID_SCORE_COLOR if score > 0 else GRAY
+                score_color = self._valid_color() if score > 0 else GRAY
 
             score_text = font.render(str(score), True, score_color)
             self.screen.blit(score_text, (scorecard_x + col_width, y))
@@ -740,7 +772,7 @@ class YahtzeeGame:
         for i in range(num):
             name, strategy = coord.player_configs[i]
             score = coord.all_scorecards[i].get_grand_total()
-            color = PLAYER_COLORS[i % len(PLAYER_COLORS)]
+            color = self._player_colors()[i % len(self._player_colors())]
             chip_rect = pygame.Rect(start_x + i * bar_width, bar_y, bar_width - 4, bar_height)
 
             if i == coord.current_player_index and not coord.game_over:
@@ -770,7 +802,7 @@ class YahtzeeGame:
 
         idx = coord.current_player_index
         name, strategy = coord.player_configs[idx]
-        color = PLAYER_COLORS[idx % len(PLAYER_COLORS)]
+        color = self._player_colors()[idx % len(self._player_colors())]
 
         font = self._font(56)
         if strategy is None:
@@ -852,7 +884,7 @@ class YahtzeeGame:
         y += 26
 
         bonus = scorecard.get_upper_section_bonus()
-        bonus_color = VALID_SCORE_COLOR if bonus > 0 else GRAY
+        bonus_color = self._valid_color() if bonus > 0 else GRAY
         bonus_text = total_font.render(f"Bonus: {bonus}", True, bonus_color)
         self.screen.blit(bonus_text, (left_x + 10, y))
 
@@ -890,7 +922,7 @@ class YahtzeeGame:
         if scorecard.yahtzee_bonus_count > 0:
             bonus_amount = scorecard.yahtzee_bonus_count * 100
             yb_font = self._font(30)
-            yb_text = yb_font.render(f"Yahtzee Bonus: +{bonus_amount}", True, VALID_SCORE_COLOR)
+            yb_text = yb_font.render(f"Yahtzee Bonus: +{bonus_amount}", True, self._valid_color())
             yb_rect = yb_text.get_rect(center=(WINDOW_WIDTH // 2, 452))
             self.screen.blit(yb_text, yb_rect)
 
@@ -929,7 +961,7 @@ class YahtzeeGame:
         totals = [coord.all_scorecards[i].get_grand_total() for i in range(num)]
         winner_idx = max(range(num), key=lambda i: totals[i])
         winner_name = coord.player_configs[winner_idx][0]
-        winner_color = PLAYER_COLORS[winner_idx % len(PLAYER_COLORS)]
+        winner_color = self._player_colors()[winner_idx % len(self._player_colors())]
 
         winner_font = self._font(36)
         winner_text = winner_font.render(f"{winner_name} wins!", True, winner_color)
@@ -960,7 +992,7 @@ class YahtzeeGame:
         # Player name headers
         for i in range(num):
             name = coord.player_configs[i][0]
-            color = PLAYER_COLORS[i % len(PLAYER_COLORS)]
+            color = self._player_colors()[i % len(self._player_colors())]
             col_x = grid_x + label_col_width + i * player_col_width
             name_text = header_font.render(name, True, color)
             name_rect = name_text.get_rect(centerx=col_x + player_col_width // 2, top=y)
@@ -1003,7 +1035,7 @@ class YahtzeeGame:
             sc = coord.all_scorecards[i]
             val = sc.get_upper_section_bonus()
             col_x = grid_x + label_col_width + i * player_col_width
-            color = VALID_SCORE_COLOR if val > 0 else GRAY
+            color = self._valid_color() if val > 0 else GRAY
             text = cat_font.render(str(val), True, color)
             rect = text.get_rect(centerx=col_x + player_col_width // 2, top=y)
             self.screen.blit(text, rect)
@@ -1033,7 +1065,7 @@ class YahtzeeGame:
         for i in range(num):
             val = totals[i]
             col_x = grid_x + label_col_width + i * player_col_width
-            color = PLAYER_COLORS[i % len(PLAYER_COLORS)]
+            color = self._player_colors()[i % len(self._player_colors())]
             is_winner = (i == winner_idx)
             text = total_font.render(str(val), True, color)
             rect = text.get_rect(centerx=col_x + player_col_width // 2, top=y)
@@ -1053,7 +1085,7 @@ class YahtzeeGame:
                 sc = coord.all_scorecards[i]
                 if sc.yahtzee_bonus_count > 0:
                     bonus_str = f"+{sc.yahtzee_bonus_count * 100}"
-                    color = VALID_SCORE_COLOR
+                    color = self._valid_color()
                 else:
                     bonus_str = "0"
                     color = GRAY
@@ -1265,7 +1297,7 @@ class YahtzeeGame:
         if coord.multiplayer:
             idx = coord.current_player_index
             name, strategy = coord.player_configs[idx]
-            color = PLAYER_COLORS[idx % len(PLAYER_COLORS)]
+            color = self._player_colors()[idx % len(self._player_colors())]
             if strategy is None:
                 turn_label = f"Round {current_round}/13 — Your turn ({name})"
             else:
@@ -1311,9 +1343,9 @@ class YahtzeeGame:
             if coord.is_rolling and not die_state.held:
                 shake_x = int(math.sin(coord.roll_timer * 0.5) * 3)
                 shake_y = int(math.cos(coord.roll_timer * 0.7) * 3)
-                sprite.draw(self.screen, display_state, shake_x, shake_y)
+                sprite.draw(self.screen, display_state, shake_x, shake_y, colorblind=self.colorblind_mode)
             else:
-                sprite.draw(self.screen, display_state)
+                sprite.draw(self.screen, display_state, colorblind=self.colorblind_mode)
 
         # Draw roll button
         self.roll_button.enabled = coord.can_roll_now
