@@ -330,6 +330,9 @@ class YahtzeeGame:
             Category.LARGE_STRAIGHT, Category.YAHTZEE, Category.CHANCE,
         ]
 
+        # Zero-score confirmation dialog
+        self.confirm_zero_category = None
+
         # Font cache — avoids recreating Font objects every frame
         self._font_cache = {}
 
@@ -349,6 +352,18 @@ class YahtzeeGame:
             if event.type == pygame.QUIT:
                 self.running = False
             elif event.type == pygame.KEYDOWN:
+                # Zero-score confirmation dialog takes priority
+                if self.confirm_zero_category is not None:
+                    if event.key in (pygame.K_y, pygame.K_RETURN, pygame.K_KP_ENTER):
+                        cat = self.confirm_zero_category
+                        self.confirm_zero_category = None
+                        if coord.select_category(cat):
+                            self.sounds.play_score()
+                            self.kb_selected_index = None
+                    elif event.key in (pygame.K_n, pygame.K_ESCAPE):
+                        self.confirm_zero_category = None
+                    continue  # Block all other input while dialog showing
+
                 if event.key == pygame.K_ESCAPE:
                     if self.showing_help:
                         self.showing_help = False
@@ -399,9 +414,7 @@ class YahtzeeGame:
                     elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
                         if self.kb_selected_index is not None:
                             cat = self.category_order[self.kb_selected_index]
-                            if coord.select_category(cat):
-                                self.sounds.play_score()
-                                self.kb_selected_index = None
+                            self._try_score_category(cat)
             elif event.type == pygame.MOUSEMOTION:
                 self.hovered_category = None
                 self.kb_selected_index = None  # Mouse clears keyboard selection
@@ -412,15 +425,15 @@ class YahtzeeGame:
                             self.hovered_category = cat
                             break
             elif event.type == pygame.MOUSEBUTTONDOWN:
+                if self.confirm_zero_category is not None:
+                    continue  # Block mouse clicks while dialog showing
                 if event.button == 1 and is_human_turn and not self.showing_history and not self.showing_help:
                     clicked_category = False
                     for cat, rect in self.category_rects.items():
                         if rect.collidepoint(event.pos):
-                            if coord.select_category(cat):
-                                self.sounds.play_score()
-                                self.kb_selected_index = None
-                                clicked_category = True
-                                break
+                            self._try_score_category(cat)
+                            clicked_category = True
+                            break
 
                     if not clicked_category and not coord.is_rolling and not game_over:
                         for i, sprite in enumerate(self.dice_sprites):
@@ -430,7 +443,7 @@ class YahtzeeGame:
                                 break
 
             # Handle button clicks (only if not currently rolling and human turn)
-            if is_human_turn and not self.showing_history and not self.showing_help and self.roll_button.handle_event(event) and not coord.is_rolling:
+            if is_human_turn and not self.showing_history and not self.showing_help and self.confirm_zero_category is None and self.roll_button.handle_event(event) and not coord.is_rolling:
                 coord.roll_dice()
                 if coord.is_rolling:
                     self.sounds.play_roll()
@@ -441,6 +454,23 @@ class YahtzeeGame:
                 coord.reset_game()
                 self._game_over_sound_played = False
                 self._scores_saved = False
+
+    def _try_score_category(self, cat):
+        """Attempt to score a category, showing confirmation if it would score 0.
+
+        If the score would be 0, sets confirm_zero_category instead of scoring.
+        Otherwise scores immediately.
+        """
+        coord = self.coordinator
+        if coord.scorecard.is_filled(cat) or coord.rolls_used == 0:
+            return
+        score = calculate_score_in_context(cat, coord.dice, coord.scorecard)
+        if score == 0:
+            self.confirm_zero_category = cat
+        else:
+            if coord.select_category(cat):
+                self.sounds.play_score()
+                self.kb_selected_index = None
 
     def _kb_navigate_category(self, direction):
         """Move keyboard category selection to the next/previous unfilled category.
@@ -535,6 +565,7 @@ class YahtzeeGame:
             self.score_flash_timer = 0
             coord.last_scored_category = None
             self.kb_selected_index = None  # Clear keyboard selection on new turn
+            self.confirm_zero_category = None  # Clear confirmation on new turn
 
         # Advance flash timer
         if self.score_flash_category is not None:
@@ -1088,6 +1119,37 @@ class YahtzeeGame:
         footer_rect = footer.get_rect(center=(WINDOW_WIDTH // 2, panel_y + panel_h - 25))
         self.screen.blit(footer, footer_rect)
 
+    def draw_confirm_dialog(self):
+        """Draw a small centered dialog asking to confirm scoring 0."""
+        cat = self.confirm_zero_category
+        if cat is None:
+            return
+
+        # Semi-transparent background
+        overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 120))
+        self.screen.blit(overlay, (0, 0))
+
+        # Dialog box
+        dialog_w, dialog_h = 360, 120
+        dialog_x = (WINDOW_WIDTH - dialog_w) // 2
+        dialog_y = (WINDOW_HEIGHT - dialog_h) // 2
+        dialog_rect = pygame.Rect(dialog_x, dialog_y, dialog_w, dialog_h)
+        pygame.draw.rect(self.screen, (255, 255, 255), dialog_rect, border_radius=10)
+        pygame.draw.rect(self.screen, (180, 80, 80), dialog_rect, width=2, border_radius=10)
+
+        # Question text
+        q_font = self._font(28)
+        q_text = q_font.render(f"Score 0 in {cat.value}?", True, BLACK)
+        q_rect = q_text.get_rect(center=(WINDOW_WIDTH // 2, dialog_y + 40))
+        self.screen.blit(q_text, q_rect)
+
+        # Instructions
+        i_font = self._font(22)
+        i_text = i_font.render("Y / Enter to confirm,  N / Esc to cancel", True, (100, 100, 100))
+        i_rect = i_text.get_rect(center=(WINDOW_WIDTH // 2, dialog_y + 80))
+        self.screen.blit(i_text, i_rect)
+
     def draw_help_overlay(self):
         """Draw semi-transparent overlay showing keyboard controls."""
         # Semi-transparent background
@@ -1267,6 +1329,10 @@ class YahtzeeGame:
         # Draw turn transition overlay (on top of everything)
         if coord.multiplayer:
             self.draw_turn_transition()
+
+        # Draw zero-score confirmation dialog
+        if self.confirm_zero_category is not None:
+            self.draw_confirm_dialog()
 
         # Draw history overlay
         if self.showing_history:
