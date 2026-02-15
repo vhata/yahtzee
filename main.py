@@ -319,6 +319,16 @@ class YahtzeeGame:
         self.hovered_category = None
         self.showing_history = False
         self.showing_help = False
+        self.kb_selected_index = None  # Keyboard category selection (0-12)
+
+        # Category draw order (matches scorecard layout)
+        self.category_order = [
+            Category.ONES, Category.TWOS, Category.THREES,
+            Category.FOURS, Category.FIVES, Category.SIXES,
+            Category.THREE_OF_KIND, Category.FOUR_OF_KIND,
+            Category.FULL_HOUSE, Category.SMALL_STRAIGHT,
+            Category.LARGE_STRAIGHT, Category.YAHTZEE, Category.CHANCE,
+        ]
 
         # Font cache — avoids recreating Font objects every frame
         self._font_cache = {}
@@ -352,10 +362,13 @@ class YahtzeeGame:
                         self.showing_help = not self.showing_help
                         if self.showing_help:
                             self.showing_history = False
+                            self.kb_selected_index = None
                 # History overlay (H key)
                 if event.key == pygame.K_h:
                     if not coord.is_rolling and not game_over and not self.showing_help:
                         self.showing_history = not self.showing_history
+                        if self.showing_history:
+                            self.kb_selected_index = None
                 # Speed control (+/- keys) — when any AI is present
                 if coord.has_any_ai and not game_over:
                     if event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
@@ -379,8 +392,19 @@ class YahtzeeGame:
                         die_index = event.key - pygame.K_1
                         coord.toggle_hold(die_index)
                         self.sounds.play_click()
+                    elif event.key in (pygame.K_TAB, pygame.K_DOWN) and not (event.mod & pygame.KMOD_SHIFT):
+                        self._kb_navigate_category(+1)
+                    elif event.key == pygame.K_UP or (event.key == pygame.K_TAB and event.mod & pygame.KMOD_SHIFT):
+                        self._kb_navigate_category(-1)
+                    elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+                        if self.kb_selected_index is not None:
+                            cat = self.category_order[self.kb_selected_index]
+                            if coord.select_category(cat):
+                                self.sounds.play_score()
+                                self.kb_selected_index = None
             elif event.type == pygame.MOUSEMOTION:
                 self.hovered_category = None
+                self.kb_selected_index = None  # Mouse clears keyboard selection
                 if not game_over and is_human_turn and not self.showing_history and not self.showing_help:
                     scorecard = coord.scorecard
                     for cat, rect in self.category_rects.items():
@@ -394,6 +418,7 @@ class YahtzeeGame:
                         if rect.collidepoint(event.pos):
                             if coord.select_category(cat):
                                 self.sounds.play_score()
+                                self.kb_selected_index = None
                                 clicked_category = True
                                 break
 
@@ -416,6 +441,32 @@ class YahtzeeGame:
                 coord.reset_game()
                 self._game_over_sound_played = False
                 self._scores_saved = False
+
+    def _kb_navigate_category(self, direction):
+        """Move keyboard category selection to the next/previous unfilled category.
+
+        Args:
+            direction: +1 for forward, -1 for backward
+        """
+        scorecard = self.coordinator.scorecard
+        unfilled = [i for i, cat in enumerate(self.category_order) if not scorecard.is_filled(cat)]
+        if not unfilled:
+            return
+
+        if self.kb_selected_index is None:
+            # Start at first (forward) or last (backward) unfilled category
+            self.kb_selected_index = unfilled[0] if direction > 0 else unfilled[-1]
+        else:
+            # Find next unfilled in the given direction, wrapping around
+            if direction > 0:
+                candidates = [i for i in unfilled if i > self.kb_selected_index]
+                self.kb_selected_index = candidates[0] if candidates else unfilled[0]
+            else:
+                candidates = [i for i in unfilled if i < self.kb_selected_index]
+                self.kb_selected_index = candidates[-1] if candidates else unfilled[-1]
+
+        # Clear mouse hover to avoid dual highlights
+        self.hovered_category = None
 
     def _save_scores(self):
         """Persist game results to disk. Called once before reset_game()."""
@@ -483,6 +534,7 @@ class YahtzeeGame:
             self.score_flash_category = coord.last_scored_category
             self.score_flash_timer = 0
             coord.last_scored_category = None
+            self.kb_selected_index = None  # Clear keyboard selection on new turn
 
         # Advance flash timer
         if self.score_flash_category is not None:
@@ -547,7 +599,7 @@ class YahtzeeGame:
                 pygame.draw.rect(self.screen, flash_color, cat_rect, border_radius=5)
             elif coord.ai_showing_score_choice and cat == coord.ai_score_choice_category:
                 pygame.draw.rect(self.screen, AI_CHOICE_HIGHLIGHT, cat_rect, border_radius=5)
-            elif not scorecard.is_filled(cat) and self.hovered_category == cat:
+            elif not scorecard.is_filled(cat) and (self.hovered_category == cat or (self.kb_selected_index is not None and self.category_order[self.kb_selected_index] == cat)):
                 pygame.draw.rect(self.screen, HOVER_COLOR, cat_rect, border_radius=5)
 
             name_text = font.render(cat.value, True, BLACK)
@@ -601,7 +653,7 @@ class YahtzeeGame:
                 pygame.draw.rect(self.screen, flash_color, cat_rect, border_radius=5)
             elif coord.ai_showing_score_choice and cat == coord.ai_score_choice_category:
                 pygame.draw.rect(self.screen, AI_CHOICE_HIGHLIGHT, cat_rect, border_radius=5)
-            elif not scorecard.is_filled(cat) and self.hovered_category == cat:
+            elif not scorecard.is_filled(cat) and (self.hovered_category == cat or (self.kb_selected_index is not None and self.category_order[self.kb_selected_index] == cat)):
                 pygame.draw.rect(self.screen, HOVER_COLOR, cat_rect, border_radius=5)
 
             name_text = font.render(cat.value, True, BLACK)
