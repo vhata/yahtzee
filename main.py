@@ -14,6 +14,7 @@ from game_engine import (
 from game_coordinator import GameCoordinator, parse_args, _make_strategy
 from sounds import SoundManager
 from score_history import record_score, record_multiplayer_scores, get_high_scores, get_recent_scores, get_recent_scores_filtered
+from settings import load_settings, save_settings
 
 # Initialize pygame (mixer pre-init for low-latency audio)
 pygame.mixer.pre_init(44100, -16, 1, 512)
@@ -379,6 +380,15 @@ class YahtzeeGame:
             self._font_cache[size] = pygame.font.Font(None, size)
         return self._font_cache[size]
 
+    def _save_current_settings(self):
+        """Persist current toggleable settings to disk."""
+        save_settings({
+            "colorblind_mode": self.colorblind_mode,
+            "sound_enabled": self.sounds._enabled,
+            "speed": self.coordinator.speed_name,
+            "dark_mode": getattr(self, "dark_mode", False),
+        })
+
     def handle_events(self):
         """Handle pygame events — translates input to coordinator actions"""
         coord = self.coordinator
@@ -438,15 +448,19 @@ class YahtzeeGame:
                 # Speed control (+/- keys) — when any AI is present
                 if coord.has_any_ai and not game_over:
                     if event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
-                        coord.change_speed(+1)
+                        if coord.change_speed(+1):
+                            self._save_current_settings()
                     elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
-                        coord.change_speed(-1)
+                        if coord.change_speed(-1):
+                            self._save_current_settings()
                 # Sound toggle (M key) — not while history overlay is showing
                 if event.key == pygame.K_m and not self.showing_history:
                     self.sounds.toggle()
+                    self._save_current_settings()
                 # Colorblind mode toggle (C key)
                 if event.key == pygame.K_c:
                     self.colorblind_mode = not self.colorblind_mode
+                    self._save_current_settings()
                 # Undo (Ctrl+Z) for human players
                 if event.key == pygame.K_z and (event.mod & pygame.KMOD_CTRL or event.mod & pygame.KMOD_META):
                     if coord.undo():
@@ -1459,6 +1473,22 @@ def _prompt_resume(screen, clock):
         clock.tick(FPS)
 
 
+def _apply_settings(game):
+    """Apply persisted settings to a game instance at startup."""
+    settings = load_settings()
+    game.colorblind_mode = settings.get("colorblind_mode", False)
+    game.sounds._enabled = settings.get("sound_enabled", True)
+    game.dark_mode = settings.get("dark_mode", False)
+    # Apply persisted speed (only if not overridden by CLI --speed)
+    saved_speed = settings.get("speed", "normal")
+    if saved_speed in ("slow", "normal", "fast"):
+        game.coordinator.change_speed(0)  # no-op, but we set directly:
+        from game_coordinator import SPEED_PRESETS, SPEED_NAMES
+        if saved_speed in SPEED_PRESETS:
+            game.coordinator.speed_name = saved_speed
+            game.coordinator.ai_delay, game.coordinator.roll_duration, game.coordinator.ai_hold_show_duration = SPEED_PRESETS[saved_speed]
+
+
 def main():
     """Entry point for the game"""
     args = parse_args()
@@ -1472,6 +1502,7 @@ def main():
         clock = pygame.time.Clock()
         if _prompt_resume(screen, clock):
             game = YahtzeeGame(coordinator=saved_coord)
+            _apply_settings(game)
             game.run()
             return
         # User declined — clear the save and continue with fresh game
@@ -1517,6 +1548,7 @@ def main():
 
         game = YahtzeeGame(ai_strategy=ai_strategy, speed=args.speed)
 
+    _apply_settings(game)
     game.run()
 
 
