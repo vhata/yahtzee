@@ -1128,6 +1128,23 @@ class TestSmokeRendering:
         game.colorblind_mode = True
         game.draw()
 
+    def test_draw_with_tooltip(self, headless_pygame):
+        """Tooltip renders without error when hovering an unfilled category."""
+        random.seed(42)
+        game = self._make_game(headless_pygame)
+        # Roll so rolls_used > 0
+        game.coordinator.roll_dice()
+        tick_until(game.coordinator, lambda c: not c.is_rolling)
+        # Set hovered category to trigger tooltip
+        game.hovered_category = Category.FULL_HOUSE
+        game.draw()
+
+    def test_category_tooltips_complete(self, headless_pygame):
+        """Every Category enum member has a tooltip entry."""
+        from main import CATEGORY_TOOLTIPS
+        for cat in Category:
+            assert cat in CATEGORY_TOOLTIPS, f"Missing tooltip for {cat}"
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 9. AUTOSAVE

@@ -79,6 +79,23 @@ DARK_PANEL_BORDER = (70, 72, 85)
 DARK_SHADOW_COLOR = (20, 20, 25, 50)
 DARK_BORDER_COLOR = (80, 80, 90)
 
+# Category tooltips for new players
+CATEGORY_TOOLTIPS = {
+    Category.ONES: "Sum of all dice showing 1",
+    Category.TWOS: "Sum of all dice showing 2",
+    Category.THREES: "Sum of all dice showing 3",
+    Category.FOURS: "Sum of all dice showing 4",
+    Category.FIVES: "Sum of all dice showing 5",
+    Category.SIXES: "Sum of all dice showing 6",
+    Category.THREE_OF_KIND: "3 of the same, score = sum of all dice",
+    Category.FOUR_OF_KIND: "4 of the same, score = sum of all dice",
+    Category.FULL_HOUSE: "3 of one + 2 of another = 25",
+    Category.SMALL_STRAIGHT: "4 consecutive dice = 30",
+    Category.LARGE_STRAIGHT: "5 consecutive dice = 40",
+    Category.YAHTZEE: "All 5 dice the same = 50",
+    Category.CHANCE: "Sum of all dice, no pattern needed",
+}
+
 # Dice constants
 DICE_SIZE = 80
 DICE_MARGIN = 20
@@ -867,6 +884,49 @@ class YahtzeeGame:
         grand_total = scorecard.get_grand_total()
         total_text = font_bold.render(f"GRAND TOTAL: {grand_total}", True, text_color)
         self.screen.blit(total_text, (scorecard_x, y))
+
+        # Tooltip for hovered/selected unfilled category
+        if not self.showing_history and not self.showing_help and not coord.game_over and coord.rolls_used > 0:
+            tooltip_cat = None
+            if self.hovered_category is not None:
+                tooltip_cat = self.hovered_category
+            elif self.kb_selected_index is not None:
+                tooltip_cat = self.category_order[self.kb_selected_index]
+            if tooltip_cat is not None and not scorecard.is_filled(tooltip_cat):
+                self._draw_tooltip(tooltip_cat, scorecard_x)
+
+    def _draw_tooltip(self, category, scorecard_x):
+        """Draw tooltip popup to the left of the scorecard for the hovered category."""
+        tip_text = CATEGORY_TOOLTIPS.get(category)
+        if not tip_text:
+            return
+
+        panel_bg, panel_border = self._panel_colors()
+        tip_font = self._font(20)
+
+        # Get the category row rect for vertical alignment
+        cat_rect = self.category_rects.get(category)
+        if cat_rect is None:
+            return
+
+        # Render text and measure
+        text_surface = tip_font.render(tip_text, True, self._text_color())
+        text_w, text_h = text_surface.get_size()
+
+        # Position to the left of the scorecard panel
+        padding = 8
+        box_w = text_w + padding * 2
+        box_h = text_h + padding * 2
+        box_x = scorecard_x - 20 - box_w
+        box_y = cat_rect.centery - box_h // 2
+
+        # Draw tooltip box
+        box_rect = pygame.Rect(box_x, box_y, box_w, box_h)
+        pygame.draw.rect(self.screen, panel_bg, box_rect, border_radius=6)
+        pygame.draw.rect(self.screen, panel_border, box_rect, width=1, border_radius=6)
+
+        # Draw text
+        self.screen.blit(text_surface, (box_x + padding, box_y + padding))
 
     def draw_player_bar(self):
         """Draw horizontal bar showing all players' names and scores (multiplayer only)."""
