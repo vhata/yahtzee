@@ -121,10 +121,6 @@ function renderDice(s) {
             }
             if (die.held) {
                 el.classList.add("held");
-                const label = document.createElement("span");
-                label.className = "held-label";
-                label.textContent = "HELD";
-                el.appendChild(label);
             }
 
             // Bounce animation on roll end
@@ -136,9 +132,10 @@ function renderDice(s) {
 
         wrapper.appendChild(el);
 
+        // Die label below — shows "[N] HELD" when held, just "[N]" otherwise
         const label = document.createElement("span");
-        label.className = "die-label";
-        label.textContent = `[${i + 1}]`;
+        label.className = "die-label" + (die.held ? " die-label-held" : "");
+        label.textContent = die.held ? `[${i + 1}] HELD` : `[${i + 1}]`;
         wrapper.appendChild(label);
 
         container.appendChild(wrapper);
