@@ -1250,3 +1250,59 @@ class TestAutosave:
         # Override default path for clear
         c.clear_autosave(path=path)
         assert not path.exists()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 10. GAME LOG
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestGameLog:
+    """Tests for game log integration in the coordinator."""
+
+    def test_coordinator_has_game_log(self):
+        """Coordinator creates a game_log attribute on init."""
+        c = GameCoordinator()
+        assert hasattr(c, "game_log")
+        assert len(c.game_log.entries) == 0
+
+    def test_roll_logged_after_completion(self):
+        """A completed roll creates a log entry."""
+        random.seed(42)
+        c = GameCoordinator()
+        c.roll_dice()
+        tick_until(c, lambda c: not c.is_rolling)
+        rolls = [e for e in c.game_log.entries if e.event_type == "roll"]
+        assert len(rolls) == 1
+        assert rolls[0].roll_number == 1
+        assert rolls[0].turn == 1
+
+    def test_score_logged_after_scoring(self):
+        """Scoring a category creates a score log entry."""
+        random.seed(42)
+        c = GameCoordinator()
+        c.roll_dice()
+        tick_until(c, lambda c: not c.is_rolling)
+        c.select_category(Category.ONES)
+        scores = c.game_log.get_score_entries(player_index=0)
+        assert len(scores) == 1
+        assert scores[0].category == Category.ONES
+
+    def test_reset_clears_log(self):
+        """reset_game() clears the game log."""
+        random.seed(42)
+        c = GameCoordinator()
+        c.roll_dice()
+        tick_until(c, lambda c: not c.is_rolling)
+        c.select_category(Category.ONES)
+        assert len(c.game_log.entries) > 0
+        c.reset_game()
+        assert len(c.game_log.entries) == 0
+
+    @pytest.mark.slow
+    def test_ai_full_game_produces_13_score_entries(self):
+        """An AI game to completion produces exactly 13 score log entries."""
+        random.seed(42)
+        c = GameCoordinator(ai_strategy=GreedyStrategy(), speed="fast")
+        tick_until(c, lambda c: c.game_over, max_ticks=100000)
+        scores = c.game_log.get_score_entries(player_index=0)
+        assert len(scores) == 13

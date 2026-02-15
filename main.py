@@ -427,6 +427,9 @@ class YahtzeeGame:
         # Dark mode (persisted via settings.py)
         self.dark_mode = False
 
+        # Replay overlay (game over only)
+        self.showing_replay = False
+
         # Font cache — avoids recreating Font objects every frame
         self._font_cache = {}
 
@@ -542,6 +545,8 @@ class YahtzeeGame:
                 if event.key == pygame.K_ESCAPE:
                     if self.showing_help:
                         self.showing_help = False
+                    elif self.showing_replay:
+                        self.showing_replay = False
                     elif self.showing_history:
                         self.showing_history = False
                         self.history_filter_player = "all"
@@ -593,6 +598,9 @@ class YahtzeeGame:
                 if event.key == pygame.K_d:
                     self.dark_mode = not self.dark_mode
                     self._save_current_settings()
+                # Replay overlay (R key, game over only)
+                if event.key == pygame.K_r and game_over:
+                    self.showing_replay = not self.showing_replay
                 # Undo (Ctrl+Z) for human players
                 if event.key == pygame.K_z and (event.mod & pygame.KMOD_CTRL or event.mod & pygame.KMOD_META):
                     if coord.undo():
@@ -654,6 +662,7 @@ class YahtzeeGame:
                 coord.reset_game()
                 self._game_over_sound_played = False
                 self._scores_saved = False
+                self.showing_replay = False
 
     def _try_score_category(self, cat):
         """Attempt to score a category, showing confirmation if it would score 0.
@@ -1462,7 +1471,7 @@ class YahtzeeGame:
         self.screen.blit(overlay, (0, 0))
 
         # Panel
-        panel_w, panel_h = 500, 450
+        panel_w, panel_h = 500, 475
         panel_x = (WINDOW_WIDTH - panel_w) // 2
         panel_y = (WINDOW_HEIGHT - panel_h) // 2
         panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
@@ -1488,6 +1497,7 @@ class YahtzeeGame:
             ("Ctrl+Z", "Undo"),
             ("C", "Colorblind mode"),
             ("D", "Dark mode"),
+            ("R", "Game replay (after game)"),
             ("Esc", "Close overlay / Quit"),
             ("? / F1", "This help screen"),
         ]
@@ -1508,6 +1518,90 @@ class YahtzeeGame:
         # Footer
         footer_font = self._font(24)
         footer = footer_font.render("Press ? or Escape to close", True, self._gray_color())
+        footer_rect = footer.get_rect(center=(WINDOW_WIDTH // 2, panel_y + panel_h - 25))
+        self.screen.blit(footer, footer_rect)
+
+    def draw_replay_overlay(self):
+        """Draw post-game replay overlay showing turn-by-turn summary."""
+        panel_bg, panel_border = self._panel_colors()
+        header_color = self._section_header_color()
+        text_color = self._text_color()
+        coord = self.coordinator
+        game_log = coord.game_log
+
+        # Semi-transparent background
+        overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        self.screen.blit(overlay, (0, 0))
+
+        # Panel
+        panel_w, panel_h = 700, 550
+        panel_x = (WINDOW_WIDTH - panel_w) // 2
+        panel_y = (WINDOW_HEIGHT - panel_h) // 2
+        panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
+        pygame.draw.rect(self.screen, panel_bg, panel_rect, border_radius=12)
+        pygame.draw.rect(self.screen, panel_border, panel_rect, width=2, border_radius=12)
+
+        # Title
+        title_font = self._font(48)
+        title = title_font.render("GAME REPLAY", True, header_color)
+        title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, panel_y + 35))
+        self.screen.blit(title, title_rect)
+
+        # Build turn summaries for player 0 (single-player) or all players
+        entry_font = self._font(22)
+        row_y = panel_y + 70
+
+        # For single-player, show one column; for multiplayer, just show scoring summary
+        score_entries = game_log.get_score_entries(player_index=0)
+        if not score_entries:
+            # Try to show all players' entries
+            all_score_entries = [e for e in game_log.entries if e.event_type == "score"]
+            if all_score_entries:
+                score_entries = all_score_entries
+            else:
+                no_data = entry_font.render("No replay data available.", True, self._gray_color())
+                no_rect = no_data.get_rect(center=(WINDOW_WIDTH // 2, row_y + 60))
+                self.screen.blit(no_data, no_rect)
+
+        for entry in score_entries:
+            if row_y > panel_y + panel_h - 60:
+                break
+
+            # Build the turn summary line
+            turn_entries = game_log.get_turn_entries(entry.turn, entry.player_index)
+            rolls = [e for e in turn_entries if e.event_type == "roll"]
+
+            # Format: "Turn 3: [2,3,3,5,6] → 3 of a Kind: 20"
+            dice_str = ""
+            if rolls:
+                parts = []
+                for r in rolls:
+                    parts.append(f"[{','.join(str(v) for v in r.dice_values)}]")
+                dice_str = " → ".join(parts)
+
+            cat_name = entry.category.value if entry.category else "?"
+            score_val = entry.score if entry.score is not None else "?"
+
+            # Player prefix for multiplayer
+            if coord.multiplayer:
+                pname = coord.player_configs[entry.player_index][0] if entry.player_index < len(coord.player_configs) else f"P{entry.player_index}"
+                line = f"T{entry.turn} {pname}: {dice_str} → {cat_name}: {score_val}"
+            else:
+                line = f"Turn {entry.turn}: {dice_str} → {cat_name}: {score_val}"
+
+            # Truncate if too long
+            max_w = panel_w - 40
+            while entry_font.size(line)[0] > max_w and len(line) > 20:
+                line = line[:-4] + "..."
+
+            text_surface = entry_font.render(line, True, text_color)
+            self.screen.blit(text_surface, (panel_x + 20, row_y))
+            row_y += 26
+
+        # Footer
+        footer_font = self._font(24)
+        footer = footer_font.render("R or Escape to close", True, self._gray_color())
         footer_rect = footer.get_rect(center=(WINDOW_WIDTH // 2, panel_y + panel_h - 25))
         self.screen.blit(footer, footer_rect)
 
@@ -1658,6 +1752,10 @@ class YahtzeeGame:
         # Draw history overlay
         if self.showing_history:
             self.draw_history_overlay()
+
+        # Draw replay overlay
+        if self.showing_replay:
+            self.draw_replay_overlay()
 
         # Draw help overlay
         if self.showing_help:

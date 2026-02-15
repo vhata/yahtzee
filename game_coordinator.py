@@ -25,6 +25,7 @@ from ai import (
     RollAction, ScoreAction,
     RandomStrategy, GreedyStrategy, ExpectedValueStrategy, OptimalStrategy,
 )
+from game_log import GameLog
 
 # Speed presets for AI playback: (ai_delay, roll_duration, hold_show_duration) in frames
 SPEED_PRESETS = {
@@ -85,6 +86,9 @@ class GameCoordinator:
 
         # Undo stack — stores snapshots of coordinator state before each human action
         self._undo_stack = []
+
+        # Game log — records all actions for post-game replay
+        self.game_log = GameLog()
 
         # Score animation signal — set when a category is scored, consumed by GUI
         self.last_scored_category = None
@@ -282,16 +286,31 @@ class GameCoordinator:
         if self.multiplayer:
             if mp_can_select_category(self.mp_state, category):
                 self._push_undo()
+                dice_vals = [d.value for d in self.dice]
+                score = mp_get_current_scorecard(self.mp_state).scores.get(category)
+                # Calculate score before committing (scorecard doesn't have it yet)
+                from game_engine import calculate_score_in_context
+                score = calculate_score_in_context(category, self.mp_state.dice,
+                                                   mp_get_current_scorecard(self.mp_state))
+                turn = self.current_round
+                pidx = self.current_player_index
                 self.mp_state = mp_select_category(self.mp_state, category)
                 self.last_scored_category = category
+                self.game_log.log_score(turn, pidx, category, score, dice_vals)
                 self._on_turn_scored()
                 self._autosave_if_active()
                 return True
         else:
             if can_select_category(self.state, category):
                 self._push_undo()
+                dice_vals = [d.value for d in self.dice]
+                from game_engine import calculate_score_in_context
+                score = calculate_score_in_context(category, self.state.dice,
+                                                   self.state.scorecard)
+                turn = self.current_round
                 self.state = engine_select_category(self.state, category)
                 self.last_scored_category = category
+                self.game_log.log_score(turn, 0, category, score, dice_vals)
                 self._autosave_if_active()
                 return True
         return False
@@ -325,6 +344,7 @@ class GameCoordinator:
         self.ai_score_choice_category = None
         self._ai_score_choice_action = None
         self.ai_score_choice_timer = 0
+        self.game_log.clear()
 
     def change_speed(self, direction):
         """Change AI speed. direction=+1 for faster, -1 for slower.
@@ -363,6 +383,14 @@ class GameCoordinator:
                 else:
                     self.state = self._pending_state
                 self.is_rolling = False
+                # Log the completed roll
+                dice_vals = [d.value for d in self.dice]
+                self.game_log.log_roll(
+                    turn=self.current_round,
+                    player_index=self.current_player_index,
+                    roll_number=self.rolls_used,
+                    dice_values=dice_vals,
+                )
             return
 
         # AI hold-showing pause — briefly display held dice before rolling
@@ -379,18 +407,31 @@ class GameCoordinator:
             if self.ai_score_choice_timer >= self.ai_hold_show_duration:
                 action = self._ai_score_choice_action
                 self.last_scored_category = action.category
+                # Log the AI score before committing
+                from game_engine import calculate_score_in_context
+                dice_vals = [d.value for d in self.dice]
                 if self.multiplayer:
+                    score = calculate_score_in_context(
+                        action.category, self.mp_state.dice,
+                        mp_get_current_scorecard(self.mp_state))
+                    turn = self.current_round
+                    pidx = self.current_player_index
                     self.mp_state = mp_select_category(self.mp_state, action.category)
                     self.ai_showing_score_choice = False
                     self.ai_score_choice_category = None
                     self._ai_score_choice_action = None
+                    self.game_log.log_score(turn, pidx, action.category, score, dice_vals)
                     self._on_turn_scored()
                 else:
+                    score = calculate_score_in_context(
+                        action.category, self.state.dice, self.state.scorecard)
+                    turn = self.current_round
                     self.state = engine_select_category(self.state, action.category)
                     self.ai_needs_first_roll = True
                     self.ai_showing_score_choice = False
                     self.ai_score_choice_category = None
                     self._ai_score_choice_action = None
+                    self.game_log.log_score(turn, 0, action.category, score, dice_vals)
                 self._autosave_if_active()
             return
 
