@@ -1115,6 +1115,19 @@ class TestSmokeRendering:
             game.update()
         game.draw()
 
+    def test_draw_dark_mode(self, headless_pygame):
+        """Dark mode renders without error."""
+        game = self._make_game(headless_pygame)
+        game.dark_mode = True
+        game.draw()
+
+    def test_draw_dark_mode_with_colorblind(self, headless_pygame):
+        """Dark mode combined with colorblind mode renders without error."""
+        game = self._make_game(headless_pygame)
+        game.dark_mode = True
+        game.colorblind_mode = True
+        game.draw()
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 9. AUTOSAVE

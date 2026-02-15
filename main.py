@@ -60,6 +60,25 @@ CB_PLAYER_COLORS = [
     (160, 80, 200),  # Purple
 ]
 
+# Dark mode palette
+DARK_BACKGROUND = (30, 32, 38)
+DARK_SCORECARD_BG = (40, 42, 50)
+DARK_TEXT = (220, 220, 230)
+DARK_GRAY = (90, 90, 100)
+DARK_HOVER_COLOR = (50, 60, 80)
+DARK_SECTION_HEADER = (100, 170, 220)
+DARK_BUTTON_COLOR = (50, 100, 150)
+DARK_BUTTON_HOVER = (70, 120, 180)
+DARK_FLASH_HIGHLIGHT = (120, 100, 40)
+DARK_DICE_COLOR = (60, 62, 70)
+DARK_DOT_COLOR = (220, 220, 230)
+DARK_IN_CUP_COLOR = (50, 52, 60)
+DARK_AI_CHOICE_HIGHLIGHT = (40, 60, 90)
+DARK_PANEL_BG = (45, 48, 56)
+DARK_PANEL_BORDER = (70, 72, 85)
+DARK_SHADOW_COLOR = (20, 20, 25, 50)
+DARK_BORDER_COLOR = (80, 80, 90)
+
 # Dice constants
 DICE_SIZE = 80
 DICE_MARGIN = 20
@@ -96,7 +115,8 @@ class DiceSprite:
         dice_rect = pygame.Rect(self.x, self.y, DICE_SIZE, DICE_SIZE)
         return dice_rect.collidepoint(pos)
 
-    def draw(self, surface, die_state, offset_x=0, offset_y=0, colorblind=False):
+    def draw(self, surface, die_state, offset_x=0, offset_y=0, colorblind=False,
+             dice_color=None, dot_color=None, shadow_color=None, border_color=None):
         """
         Draw the die based on its state.
 
@@ -106,18 +126,27 @@ class DiceSprite:
             offset_x: X offset for animation effects
             offset_y: Y offset for animation effects
             colorblind: If True, use colorblind-friendly held color and markers
+            dice_color: Override dice face color (for dark mode)
+            dot_color: Override dot color (for dark mode)
+            shadow_color: Override shadow color (for dark mode)
+            border_color: Override unheld border color (for dark mode)
         """
         # Apply offsets for animation effects
         x = self.x + offset_x
         y = self.y + offset_y
 
+        _dice_color = dice_color or DICE_COLOR
+        _dot_color = dot_color or DOT_COLOR
+        _shadow_color = shadow_color or (200, 200, 200, 50)
+        _border_color = border_color or (100, 100, 100)
+
         # Draw subtle shadow for depth
         shadow_rect = pygame.Rect(x + 3, y + 3, DICE_SIZE, DICE_SIZE)
-        pygame.draw.rect(surface, (200, 200, 200, 50), shadow_rect, border_radius=10)
+        pygame.draw.rect(surface, _shadow_color, shadow_rect, border_radius=10)
 
         # Draw dice background
         dice_rect = pygame.Rect(x, y, DICE_SIZE, DICE_SIZE)
-        pygame.draw.rect(surface, DICE_COLOR, dice_rect, border_radius=10)
+        pygame.draw.rect(surface, _dice_color, dice_rect, border_radius=10)
 
         # Draw border - thicker and colored if held
         if die_state.held:
@@ -133,34 +162,39 @@ class DiceSprite:
                                      (x + i, y), (x + i + DICE_SIZE, y + DICE_SIZE), 2)
                 surface.set_clip(None)
         else:
-            pygame.draw.rect(surface, (100, 100, 100), dice_rect, width=2, border_radius=10)
+            pygame.draw.rect(surface, _border_color, dice_rect, width=2, border_radius=10)
 
         # Draw dots based on value
-        self._draw_dots(surface, die_state.value, offset_x, offset_y)
+        self._draw_dots(surface, die_state.value, offset_x, offset_y, _dot_color)
 
-    def draw_in_cup(self, surface):
+    def draw_in_cup(self, surface, cup_color=None, shadow_color=None, border_color=None, text_color=None):
         """Draw the die in its 'in the cup' state — face-down, gray, with '?' text.
 
         Used when rolls_used == 0 to show dice haven't been rolled yet this turn.
         """
+        _cup_color = cup_color or IN_CUP_COLOR
+        _shadow_color = shadow_color or (200, 200, 200, 50)
+        _border_color = border_color or (150, 155, 165)
+        _text_color = text_color or (120, 125, 135)
+
         # Draw subtle shadow
         shadow_rect = pygame.Rect(self.x + 3, self.y + 3, DICE_SIZE, DICE_SIZE)
-        pygame.draw.rect(surface, (200, 200, 200, 50), shadow_rect, border_radius=10)
+        pygame.draw.rect(surface, _shadow_color, shadow_rect, border_radius=10)
 
         # Gray background
         dice_rect = pygame.Rect(self.x, self.y, DICE_SIZE, DICE_SIZE)
-        pygame.draw.rect(surface, IN_CUP_COLOR, dice_rect, border_radius=10)
+        pygame.draw.rect(surface, _cup_color, dice_rect, border_radius=10)
 
         # Light border
-        pygame.draw.rect(surface, (150, 155, 165), dice_rect, width=2, border_radius=10)
+        pygame.draw.rect(surface, _border_color, dice_rect, width=2, border_radius=10)
 
         # "?" text centered on the die
         font = pygame.font.Font(None, 48)
-        text = font.render("?", True, (120, 125, 135))
+        text = font.render("?", True, _text_color)
         text_rect = text.get_rect(center=(self.x + DICE_SIZE // 2, self.y + DICE_SIZE // 2))
         surface.blit(text, text_rect)
 
-    def _draw_dots(self, surface, value, offset_x=0, offset_y=0):
+    def _draw_dots(self, surface, value, offset_x=0, offset_y=0, color=None):
         """
         Draw the dots/pips on the die face.
 
@@ -169,7 +203,9 @@ class DiceSprite:
             value: Die value (1-6)
             offset_x: X offset for animation effects
             offset_y: Y offset for animation effects
+            color: Dot color override (for dark mode)
         """
+        dot_c = color or DOT_COLOR
         # Calculate dot positions relative to die center
         center_x = self.x + DICE_SIZE // 2 + offset_x
         center_y = self.y + DICE_SIZE // 2 + offset_y
@@ -178,42 +214,42 @@ class DiceSprite:
         # Define dot positions for each value
         # 1: center
         if value == 1:
-            pygame.draw.circle(surface, DOT_COLOR, (center_x, center_y), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x, center_y), DOT_RADIUS)
 
         # 2: diagonal top-left to bottom-right
         elif value == 2:
-            pygame.draw.circle(surface, DOT_COLOR, (center_x - offset, center_y - offset), DOT_RADIUS)
-            pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y + offset), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x - offset, center_y - offset), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x + offset, center_y + offset), DOT_RADIUS)
 
         # 3: diagonal plus center
         elif value == 3:
-            pygame.draw.circle(surface, DOT_COLOR, (center_x - offset, center_y - offset), DOT_RADIUS)
-            pygame.draw.circle(surface, DOT_COLOR, (center_x, center_y), DOT_RADIUS)
-            pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y + offset), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x - offset, center_y - offset), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x, center_y), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x + offset, center_y + offset), DOT_RADIUS)
 
         # 4: four corners
         elif value == 4:
-            pygame.draw.circle(surface, DOT_COLOR, (center_x - offset, center_y - offset), DOT_RADIUS)
-            pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y - offset), DOT_RADIUS)
-            pygame.draw.circle(surface, DOT_COLOR, (center_x - offset, center_y + offset), DOT_RADIUS)
-            pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y + offset), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x - offset, center_y - offset), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x + offset, center_y - offset), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x - offset, center_y + offset), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x + offset, center_y + offset), DOT_RADIUS)
 
         # 5: four corners plus center
         elif value == 5:
-            pygame.draw.circle(surface, DOT_COLOR, (center_x - offset, center_y - offset), DOT_RADIUS)
-            pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y - offset), DOT_RADIUS)
-            pygame.draw.circle(surface, DOT_COLOR, (center_x, center_y), DOT_RADIUS)
-            pygame.draw.circle(surface, DOT_COLOR, (center_x - offset, center_y + offset), DOT_RADIUS)
-            pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y + offset), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x - offset, center_y - offset), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x + offset, center_y - offset), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x, center_y), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x - offset, center_y + offset), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x + offset, center_y + offset), DOT_RADIUS)
 
         # 6: two columns of three
         elif value == 6:
-            pygame.draw.circle(surface, DOT_COLOR, (center_x - offset, center_y - offset), DOT_RADIUS)
-            pygame.draw.circle(surface, DOT_COLOR, (center_x - offset, center_y), DOT_RADIUS)
-            pygame.draw.circle(surface, DOT_COLOR, (center_x - offset, center_y + offset), DOT_RADIUS)
-            pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y - offset), DOT_RADIUS)
-            pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y), DOT_RADIUS)
-            pygame.draw.circle(surface, DOT_COLOR, (center_x + offset, center_y + offset), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x - offset, center_y - offset), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x - offset, center_y), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x - offset, center_y + offset), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x + offset, center_y - offset), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x + offset, center_y), DOT_RADIUS)
+            pygame.draw.circle(surface, dot_c, (center_x + offset, center_y + offset), DOT_RADIUS)
 
 
 class Button:
@@ -254,19 +290,24 @@ class Button:
                 return True
         return False
 
-    def draw(self, surface):
-        """Draw the button"""
+    def draw(self, surface, button_color=None, hover_color=None, disabled_color=None, border_color=None):
+        """Draw the button with optional color overrides for theming."""
+        _btn = button_color or BUTTON_COLOR
+        _hover = hover_color or BUTTON_HOVER_COLOR
+        _disabled = disabled_color or GRAY
+        _border = border_color or BLACK
+
         # Choose color based on state
         if not self.enabled:
-            color = GRAY
+            color = _disabled
         elif self.is_hovered:
-            color = BUTTON_HOVER_COLOR
+            color = _hover
         else:
-            color = BUTTON_COLOR
+            color = _btn
 
         # Draw button background
         pygame.draw.rect(surface, color, self.rect, border_radius=8)
-        pygame.draw.rect(surface, BLACK, self.rect, width=2, border_radius=8)
+        pygame.draw.rect(surface, _border, self.rect, width=2, border_radius=8)
 
         # Draw button text
         text_surface = self.font.render(self.text, True, BUTTON_TEXT_COLOR)
@@ -363,6 +404,9 @@ class YahtzeeGame:
         # Zero-score confirmation dialog
         self.confirm_zero_category = None
 
+        # Dark mode (persisted via settings.py)
+        self.dark_mode = False
+
         # Font cache — avoids recreating Font objects every frame
         self._font_cache = {}
 
@@ -386,8 +430,72 @@ class YahtzeeGame:
             "colorblind_mode": self.colorblind_mode,
             "sound_enabled": self.sounds._enabled,
             "speed": self.coordinator.speed_name,
-            "dark_mode": getattr(self, "dark_mode", False),
+            "dark_mode": self.dark_mode,
         })
+
+    # ── Theme helpers (dark mode vs light mode) ──────────────────────────
+
+    def _bg_color(self):
+        return DARK_BACKGROUND if self.dark_mode else BACKGROUND
+
+    def _text_color(self):
+        return DARK_TEXT if self.dark_mode else BLACK
+
+    def _scorecard_bg(self):
+        return DARK_SCORECARD_BG if self.dark_mode else SCORECARD_BG
+
+    def _section_header_color(self):
+        return DARK_SECTION_HEADER if self.dark_mode else SECTION_HEADER_COLOR
+
+    def _hover_color(self):
+        return DARK_HOVER_COLOR if self.dark_mode else HOVER_COLOR
+
+    def _gray_color(self):
+        return DARK_GRAY if self.dark_mode else GRAY
+
+    def _flash_highlight(self):
+        return DARK_FLASH_HIGHLIGHT if self.dark_mode else FLASH_HIGHLIGHT
+
+    def _dice_colors(self):
+        """Return (dice_color, dot_color, shadow_color, border_color) for current theme."""
+        if self.dark_mode:
+            return DARK_DICE_COLOR, DARK_DOT_COLOR, DARK_SHADOW_COLOR, DARK_BORDER_COLOR
+        return DICE_COLOR, DOT_COLOR, (200, 200, 200, 50), (100, 100, 100)
+
+    def _cup_colors(self):
+        """Return (cup_color, shadow_color, border_color, text_color) for in-cup dice."""
+        if self.dark_mode:
+            return DARK_IN_CUP_COLOR, DARK_SHADOW_COLOR, (60, 62, 70), (80, 85, 95)
+        return IN_CUP_COLOR, (200, 200, 200, 50), (150, 155, 165), (120, 125, 135)
+
+    def _button_colors(self):
+        """Return (button, hover, disabled, border) for current theme."""
+        if self.dark_mode:
+            return DARK_BUTTON_COLOR, DARK_BUTTON_HOVER, DARK_GRAY, DARK_BORDER_COLOR
+        return BUTTON_COLOR, BUTTON_HOVER_COLOR, GRAY, BLACK
+
+    def _ai_choice_highlight(self):
+        return DARK_AI_CHOICE_HIGHLIGHT if self.dark_mode else AI_CHOICE_HIGHLIGHT
+
+    def _panel_colors(self):
+        """Return (bg, border) for overlay panels."""
+        if self.dark_mode:
+            return DARK_PANEL_BG, DARK_PANEL_BORDER
+        return (250, 252, 255), (100, 100, 120)
+
+    def _scorecard_border(self):
+        return DARK_PANEL_BORDER if self.dark_mode else (180, 180, 200)
+
+    def _game_over_overlay(self):
+        """Return overlay fill color for game over screen."""
+        if self.dark_mode:
+            return (25, 27, 33)
+        return (240, 240, 240)
+
+    def _winner_highlight(self):
+        if self.dark_mode:
+            return (80, 70, 30)
+        return (255, 245, 200)
 
     def handle_events(self):
         """Handle pygame events — translates input to coordinator actions"""
@@ -460,6 +568,10 @@ class YahtzeeGame:
                 # Colorblind mode toggle (C key)
                 if event.key == pygame.K_c:
                     self.colorblind_mode = not self.colorblind_mode
+                    self._save_current_settings()
+                # Dark mode toggle (D key)
+                if event.key == pygame.K_d:
+                    self.dark_mode = not self.dark_mode
                     self._save_current_settings()
                 # Undo (Ctrl+Z) for human players
                 if event.key == pygame.K_z and (event.mod & pygame.KMOD_CTRL or event.mod & pygame.KMOD_META):
@@ -641,6 +753,40 @@ class YahtzeeGame:
             if self.score_flash_timer >= self.score_flash_duration:
                 self.score_flash_category = None
 
+    def _draw_category_row(self, cat, scorecard, dice, coord, font, scorecard_x, col_width, y):
+        """Draw a single category row in the scorecard with proper theming."""
+        cat_rect = pygame.Rect(scorecard_x - 5, y - 2, col_width + 50, 28)
+        self.category_rects[cat] = cat_rect
+
+        sc_bg = self._scorecard_bg()
+        flash_hl = self._flash_highlight()
+
+        if cat == self.score_flash_category:
+            t = self.score_flash_timer / self.score_flash_duration
+            alpha = (1 + math.sin(t * 4 * math.pi - math.pi / 2)) / 2
+            flash_color = tuple(
+                int(sc_bg[c] + (flash_hl[c] - sc_bg[c]) * alpha)
+                for c in range(3)
+            )
+            pygame.draw.rect(self.screen, flash_color, cat_rect, border_radius=5)
+        elif coord.ai_showing_score_choice and cat == coord.ai_score_choice_category:
+            pygame.draw.rect(self.screen, self._ai_choice_highlight(), cat_rect, border_radius=5)
+        elif not scorecard.is_filled(cat) and (self.hovered_category == cat or (self.kb_selected_index is not None and self.category_order[self.kb_selected_index] == cat)):
+            pygame.draw.rect(self.screen, self._hover_color(), cat_rect, border_radius=5)
+
+        name_text = font.render(cat.value, True, self._text_color())
+        self.screen.blit(name_text, (scorecard_x, y))
+
+        if scorecard.is_filled(cat):
+            score = scorecard.scores[cat]
+            score_color = self._text_color()
+        else:
+            score = calculate_score_in_context(cat, dice, scorecard)
+            score_color = self._valid_color() if score > 0 else self._gray_color()
+
+        score_text = font.render(str(score), True, score_color)
+        self.screen.blit(score_text, (scorecard_x + col_width, y))
+
     def draw_scorecard(self):
         """Draw the scorecard UI on the right side of screen"""
         coord = self.coordinator
@@ -655,13 +801,16 @@ class YahtzeeGame:
 
         # Draw scorecard background panel
         panel_rect = pygame.Rect(scorecard_x - 15, scorecard_y - 15, 360, 520)
-        pygame.draw.rect(self.screen, SCORECARD_BG, panel_rect, border_radius=12)
-        pygame.draw.rect(self.screen, (180, 180, 200), panel_rect, width=2, border_radius=12)
+        pygame.draw.rect(self.screen, self._scorecard_bg(), panel_rect, border_radius=12)
+        pygame.draw.rect(self.screen, self._scorecard_border(), panel_rect, width=2, border_radius=12)
 
         # Fonts
         font = self._font(24)
         font_small = self._font(20)
         font_bold = self._font(28)
+
+        text_color = self._text_color()
+        header_color = self._section_header_color()
 
         y = scorecard_y
 
@@ -675,7 +824,7 @@ class YahtzeeGame:
             y += row_height + 2
 
         # Upper section header
-        header = font_bold.render("UPPER SECTION", True, SECTION_HEADER_COLOR)
+        header = font_bold.render("UPPER SECTION", True, header_color)
         self.screen.blit(header, (scorecard_x, y))
         y += row_height + 5
 
@@ -684,51 +833,23 @@ class YahtzeeGame:
                      Category.FOURS, Category.FIVES, Category.SIXES]
 
         for cat in upper_cats:
-            cat_rect = pygame.Rect(scorecard_x - 5, y - 2, col_width + 50, row_height)
-            self.category_rects[cat] = cat_rect
-
-            # Score flash highlight (sine-wave pulse)
-            if cat == self.score_flash_category:
-                t = self.score_flash_timer / self.score_flash_duration
-                alpha = (1 + math.sin(t * 4 * math.pi - math.pi / 2)) / 2
-                flash_color = tuple(
-                    int(SCORECARD_BG[c] + (FLASH_HIGHLIGHT[c] - SCORECARD_BG[c]) * alpha)
-                    for c in range(3)
-                )
-                pygame.draw.rect(self.screen, flash_color, cat_rect, border_radius=5)
-            elif coord.ai_showing_score_choice and cat == coord.ai_score_choice_category:
-                pygame.draw.rect(self.screen, AI_CHOICE_HIGHLIGHT, cat_rect, border_radius=5)
-            elif not scorecard.is_filled(cat) and (self.hovered_category == cat or (self.kb_selected_index is not None and self.category_order[self.kb_selected_index] == cat)):
-                pygame.draw.rect(self.screen, HOVER_COLOR, cat_rect, border_radius=5)
-
-            name_text = font.render(cat.value, True, BLACK)
-            self.screen.blit(name_text, (scorecard_x, y))
-
-            if scorecard.is_filled(cat):
-                score = scorecard.scores[cat]
-                score_color = BLACK
-            else:
-                score = calculate_score_in_context(cat, dice, scorecard)
-                score_color = self._valid_color() if score > 0 else GRAY
-
-            score_text = font.render(str(score), True, score_color)
-            self.screen.blit(score_text, (scorecard_x + col_width, y))
+            self._draw_category_row(cat, scorecard, dice, coord, font, scorecard_x, col_width, y)
             y += row_height
 
         # Upper section totals
         y += 5
         upper_total = scorecard.get_upper_section_total()
-        total_text = font.render(f"Total: {upper_total}", True, BLACK)
+        total_text = font.render(f"Total: {upper_total}", True, text_color)
         self.screen.blit(total_text, (scorecard_x, y))
         y += row_height
 
         bonus = scorecard.get_upper_section_bonus()
-        bonus_text = font_small.render(f"Bonus (63+): {bonus}", True, BLACK)
+        bonus_text = font_small.render(f"Bonus (63+): {bonus}", True, text_color)
         self.screen.blit(bonus_text, (scorecard_x, y))
         y += row_height + 10
 
         # Lower section header
-        header = font_bold.render("LOWER SECTION", True, SECTION_HEADER_COLOR)
+        header = font_bold.render("LOWER SECTION", True, header_color)
         self.screen.blit(header, (scorecard_x, y))
         y += row_height + 5
 
@@ -738,41 +859,13 @@ class YahtzeeGame:
                      Category.LARGE_STRAIGHT, Category.YAHTZEE, Category.CHANCE]
 
         for cat in lower_cats:
-            cat_rect = pygame.Rect(scorecard_x - 5, y - 2, col_width + 50, row_height)
-            self.category_rects[cat] = cat_rect
-
-            # Score flash highlight (sine-wave pulse)
-            if cat == self.score_flash_category:
-                t = self.score_flash_timer / self.score_flash_duration
-                alpha = (1 + math.sin(t * 4 * math.pi - math.pi / 2)) / 2
-                flash_color = tuple(
-                    int(SCORECARD_BG[c] + (FLASH_HIGHLIGHT[c] - SCORECARD_BG[c]) * alpha)
-                    for c in range(3)
-                )
-                pygame.draw.rect(self.screen, flash_color, cat_rect, border_radius=5)
-            elif coord.ai_showing_score_choice and cat == coord.ai_score_choice_category:
-                pygame.draw.rect(self.screen, AI_CHOICE_HIGHLIGHT, cat_rect, border_radius=5)
-            elif not scorecard.is_filled(cat) and (self.hovered_category == cat or (self.kb_selected_index is not None and self.category_order[self.kb_selected_index] == cat)):
-                pygame.draw.rect(self.screen, HOVER_COLOR, cat_rect, border_radius=5)
-
-            name_text = font.render(cat.value, True, BLACK)
-            self.screen.blit(name_text, (scorecard_x, y))
-
-            if scorecard.is_filled(cat):
-                score = scorecard.scores[cat]
-                score_color = BLACK
-            else:
-                score = calculate_score_in_context(cat, dice, scorecard)
-                score_color = self._valid_color() if score > 0 else GRAY
-
-            score_text = font.render(str(score), True, score_color)
-            self.screen.blit(score_text, (scorecard_x + col_width, y))
+            self._draw_category_row(cat, scorecard, dice, coord, font, scorecard_x, col_width, y)
             y += row_height
 
         # Grand total
         y += 10
         grand_total = scorecard.get_grand_total()
-        total_text = font_bold.render(f"GRAND TOTAL: {grand_total}", True, BLACK)
+        total_text = font_bold.render(f"GRAND TOTAL: {grand_total}", True, text_color)
         self.screen.blit(total_text, (scorecard_x, y))
 
     def draw_player_bar(self):
@@ -799,7 +892,7 @@ class YahtzeeGame:
                 text_color = WHITE
             else:
                 # Inactive: outlined
-                pygame.draw.rect(self.screen, SCORECARD_BG, chip_rect, border_radius=6)
+                pygame.draw.rect(self.screen, self._scorecard_bg(), chip_rect, border_radius=6)
                 pygame.draw.rect(self.screen, color, chip_rect, width=2, border_radius=6)
                 text_color = color
 
@@ -843,7 +936,7 @@ class YahtzeeGame:
         # Semi-transparent overlay
         overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
         overlay.set_alpha(220)
-        overlay.fill((240, 240, 240))
+        overlay.fill(self._game_over_overlay())
         self.screen.blit(overlay, (0, 0))
 
         if coord.multiplayer:
@@ -852,23 +945,27 @@ class YahtzeeGame:
             self._draw_game_over_single()
 
         # Play again button
-        self.play_again_button.draw(self.screen)
+        btn, hover, disabled, border = self._button_colors()
+        self.play_again_button.draw(self.screen, button_color=btn, hover_color=hover,
+                                    disabled_color=disabled, border_color=border)
 
     def _draw_game_over_single(self):
         """Draw single-player game over with per-category score breakdown."""
         coord = self.coordinator
         scorecard = coord.scorecard
+        text_color = self._text_color()
+        header_color = self._section_header_color()
 
         # Game Over title
         title_font = self._font(72)
-        title_text = title_font.render("GAME OVER!", True, BLACK)
+        title_text = title_font.render("GAME OVER!", True, text_color)
         title_rect = title_text.get_rect(center=(WINDOW_WIDTH // 2, 60))
         self.screen.blit(title_text, title_rect)
 
         # Final score
         score_font = self._font(56)
         final_score = scorecard.get_grand_total()
-        score_text = score_font.render(f"Final Score: {final_score}", True, (50, 100, 150))
+        score_text = score_font.render(f"Final Score: {final_score}", True, header_color)
         score_rect = score_text.get_rect(center=(WINDOW_WIDTH // 2, 115))
         self.screen.blit(score_text, score_rect)
 
@@ -881,7 +978,7 @@ class YahtzeeGame:
         left_x = 180
         y = 160
 
-        header = header_font.render("UPPER SECTION", True, SECTION_HEADER_COLOR)
+        header = header_font.render("UPPER SECTION", True, header_color)
         self.screen.blit(header, (left_x, y))
         y += 28
 
@@ -889,20 +986,20 @@ class YahtzeeGame:
                       Category.FOURS, Category.FIVES, Category.SIXES]
         for cat in upper_cats:
             score = scorecard.scores.get(cat, 0)
-            name_text = cat_font.render(cat.value, True, BLACK)
-            score_text = cat_font.render(str(score), True, BLACK)
+            name_text = cat_font.render(cat.value, True, text_color)
+            score_text = cat_font.render(str(score), True, text_color)
             self.screen.blit(name_text, (left_x + 10, y))
             self.screen.blit(score_text, (left_x + 160, y))
             y += 24
 
         y += 6
         upper_total = scorecard.get_upper_section_total()
-        sub_text = total_font.render(f"Subtotal: {upper_total}", True, BLACK)
+        sub_text = total_font.render(f"Subtotal: {upper_total}", True, text_color)
         self.screen.blit(sub_text, (left_x + 10, y))
         y += 26
 
         bonus = scorecard.get_upper_section_bonus()
-        bonus_color = self._valid_color() if bonus > 0 else GRAY
+        bonus_color = self._valid_color() if bonus > 0 else self._gray_color()
         bonus_text = total_font.render(f"Bonus: {bonus}", True, bonus_color)
         self.screen.blit(bonus_text, (left_x + 10, y))
 
@@ -910,7 +1007,7 @@ class YahtzeeGame:
         right_x = 550
         y = 160
 
-        header = header_font.render("LOWER SECTION", True, SECTION_HEADER_COLOR)
+        header = header_font.render("LOWER SECTION", True, header_color)
         self.screen.blit(header, (right_x, y))
         y += 28
 
@@ -919,20 +1016,20 @@ class YahtzeeGame:
                       Category.LARGE_STRAIGHT, Category.YAHTZEE, Category.CHANCE]
         for cat in lower_cats:
             score = scorecard.scores.get(cat, 0)
-            name_text = cat_font.render(cat.value, True, BLACK)
-            score_text = cat_font.render(str(score), True, BLACK)
+            name_text = cat_font.render(cat.value, True, text_color)
+            score_text = cat_font.render(str(score), True, text_color)
             self.screen.blit(name_text, (right_x + 10, y))
             self.screen.blit(score_text, (right_x + 160, y))
             y += 24
 
         y += 6
         lower_total = scorecard.get_lower_section_total()
-        sub_text = total_font.render(f"Subtotal: {lower_total}", True, BLACK)
+        sub_text = total_font.render(f"Subtotal: {lower_total}", True, text_color)
         self.screen.blit(sub_text, (right_x + 10, y))
 
         # Grand total centered below both columns
         grand_font = self._font(40)
-        grand_text = grand_font.render(f"GRAND TOTAL: {final_score}", True, BLACK)
+        grand_text = grand_font.render(f"GRAND TOTAL: {final_score}", True, text_color)
         grand_rect = grand_text.get_rect(center=(WINDOW_WIDTH // 2, 430))
         self.screen.blit(grand_text, grand_rect)
 
@@ -948,17 +1045,18 @@ class YahtzeeGame:
         high_scores = get_high_scores(player_type="human", limit=5)
         if high_scores:
             hs_font = self._font(28)
-            hs_label = hs_font.render("Top Human Scores", True, SECTION_HEADER_COLOR)
+            hs_label = hs_font.render("Top Human Scores", True, header_color)
             hs_rect = hs_label.get_rect(center=(WINDOW_WIDTH // 2, 468))
             self.screen.blit(hs_label, hs_rect)
 
             hs_entry_font = self._font(24)
+            dim_color = (160, 160, 170) if self.dark_mode else (80, 80, 80)
             for rank, entry in enumerate(high_scores):
                 hs_y = 490 + rank * 22
                 score_val = entry.get("score", 0)
                 date_str = entry.get("date", "")[:10]  # Just the date part
                 is_current = (score_val == final_score and rank == 0)
-                color = (180, 80, 80) if is_current else (80, 80, 80)
+                color = (180, 80, 80) if is_current else dim_color
                 label = f"{rank + 1}. {score_val}   ({date_str})"
                 hs_text = hs_entry_font.render(label, True, color)
                 hs_text_rect = hs_text.get_rect(center=(WINDOW_WIDTH // 2, hs_y))
@@ -968,10 +1066,12 @@ class YahtzeeGame:
         """Draw multiplayer game over with full per-category scorecard grid."""
         coord = self.coordinator
         num = coord.num_players
+        text_color = self._text_color()
+        header_color = self._section_header_color()
 
         # Game Over title
         title_font = self._font(64)
-        title_text = title_font.render("GAME OVER!", True, BLACK)
+        title_text = title_font.render("GAME OVER!", True, text_color)
         title_rect = title_text.get_rect(center=(WINDOW_WIDTH // 2, 45))
         self.screen.blit(title_text, title_rect)
 
@@ -1018,67 +1118,67 @@ class YahtzeeGame:
         y += row_height + 4
 
         # --- Upper section ---
-        section_text = section_font.render("UPPER SECTION", True, SECTION_HEADER_COLOR)
+        section_text = section_font.render("UPPER SECTION", True, header_color)
         self.screen.blit(section_text, (grid_x, y))
         y += row_height
 
         for cat in upper_cats:
-            label = cat_font.render(cat.value, True, BLACK)
+            label = cat_font.render(cat.value, True, text_color)
             self.screen.blit(label, (grid_x + 8, y))
             for i in range(num):
                 sc = coord.all_scorecards[i]
                 score = sc.scores.get(cat, 0)
                 col_x = grid_x + label_col_width + i * player_col_width
-                score_text = cat_font.render(str(score), True, BLACK)
+                score_text = cat_font.render(str(score), True, text_color)
                 score_rect = score_text.get_rect(centerx=col_x + player_col_width // 2, top=y)
                 self.screen.blit(score_text, score_rect)
             y += row_height
 
         # Upper subtotal + bonus
         y += 2
-        label = cat_font.render("Subtotal", True, BLACK)
+        label = cat_font.render("Subtotal", True, text_color)
         self.screen.blit(label, (grid_x + 8, y))
         for i in range(num):
             sc = coord.all_scorecards[i]
             val = sc.get_upper_section_total()
             col_x = grid_x + label_col_width + i * player_col_width
-            text = cat_font.render(str(val), True, BLACK)
+            text = cat_font.render(str(val), True, text_color)
             rect = text.get_rect(centerx=col_x + player_col_width // 2, top=y)
             self.screen.blit(text, rect)
         y += row_height
 
-        label = cat_font.render("Bonus", True, BLACK)
+        label = cat_font.render("Bonus", True, text_color)
         self.screen.blit(label, (grid_x + 8, y))
         for i in range(num):
             sc = coord.all_scorecards[i]
             val = sc.get_upper_section_bonus()
             col_x = grid_x + label_col_width + i * player_col_width
-            color = self._valid_color() if val > 0 else GRAY
+            color = self._valid_color() if val > 0 else self._gray_color()
             text = cat_font.render(str(val), True, color)
             rect = text.get_rect(centerx=col_x + player_col_width // 2, top=y)
             self.screen.blit(text, rect)
         y += row_height + 4
 
         # --- Lower section ---
-        section_text = section_font.render("LOWER SECTION", True, SECTION_HEADER_COLOR)
+        section_text = section_font.render("LOWER SECTION", True, header_color)
         self.screen.blit(section_text, (grid_x, y))
         y += row_height
 
         for cat in lower_cats:
-            label = cat_font.render(cat.value, True, BLACK)
+            label = cat_font.render(cat.value, True, text_color)
             self.screen.blit(label, (grid_x + 8, y))
             for i in range(num):
                 sc = coord.all_scorecards[i]
                 score = sc.scores.get(cat, 0)
                 col_x = grid_x + label_col_width + i * player_col_width
-                score_text = cat_font.render(str(score), True, BLACK)
+                score_text = cat_font.render(str(score), True, text_color)
                 score_rect = score_text.get_rect(centerx=col_x + player_col_width // 2, top=y)
                 self.screen.blit(score_text, score_rect)
             y += row_height
 
         # Grand total
         y += 6
-        label = total_font.render("GRAND TOTAL", True, BLACK)
+        label = total_font.render("GRAND TOTAL", True, text_color)
         self.screen.blit(label, (grid_x, y))
         for i in range(num):
             val = totals[i]
@@ -1088,16 +1188,15 @@ class YahtzeeGame:
             text = total_font.render(str(val), True, color)
             rect = text.get_rect(centerx=col_x + player_col_width // 2, top=y)
             if is_winner:
-                # Highlight winner's total
                 highlight_rect = rect.inflate(16, 4)
-                pygame.draw.rect(self.screen, (255, 245, 200), highlight_rect, border_radius=4)
+                pygame.draw.rect(self.screen, self._winner_highlight(), highlight_rect, border_radius=4)
             self.screen.blit(text, rect)
 
         # Yahtzee bonus row (only if any player earned bonuses)
         any_bonuses = any(coord.all_scorecards[i].yahtzee_bonus_count > 0 for i in range(num))
         if any_bonuses:
             y += row_height + 2
-            label = cat_font.render("Yahtzee Bonus", True, BLACK)
+            label = cat_font.render("Yahtzee Bonus", True, text_color)
             self.screen.blit(label, (grid_x + 8, y))
             for i in range(num):
                 sc = coord.all_scorecards[i]
@@ -1106,7 +1205,7 @@ class YahtzeeGame:
                     color = self._valid_color()
                 else:
                     bonus_str = "0"
-                    color = GRAY
+                    color = self._gray_color()
                 col_x = grid_x + label_col_width + i * player_col_width
                 text = cat_font.render(bonus_str, True, color)
                 rect = text.get_rect(centerx=col_x + player_col_width // 2, top=y)
@@ -1114,6 +1213,9 @@ class YahtzeeGame:
 
     def draw_history_overlay(self):
         """Draw semi-transparent overlay showing recent score history."""
+        panel_bg, panel_border = self._panel_colors()
+        header_color = self._section_header_color()
+
         # Semi-transparent background
         overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 180))
@@ -1124,12 +1226,12 @@ class YahtzeeGame:
         panel_x = (WINDOW_WIDTH - panel_w) // 2
         panel_y = (WINDOW_HEIGHT - panel_h) // 2
         panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
-        pygame.draw.rect(self.screen, (250, 252, 255), panel_rect, border_radius=12)
-        pygame.draw.rect(self.screen, (100, 100, 120), panel_rect, width=2, border_radius=12)
+        pygame.draw.rect(self.screen, panel_bg, panel_rect, border_radius=12)
+        pygame.draw.rect(self.screen, panel_border, panel_rect, width=2, border_radius=12)
 
         # Title
         title_font = self._font(48)
-        title = title_font.render("SCORE HISTORY", True, (60, 120, 160))
+        title = title_font.render("SCORE HISTORY", True, header_color)
         title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, panel_y + 35))
         self.screen.blit(title, title_rect)
 
@@ -1138,10 +1240,9 @@ class YahtzeeGame:
         filter_y = panel_y + 60
         player_label = self.history_filter_player.capitalize()
         mode_label = self.history_filter_mode.capitalize()
-        active_color = (60, 120, 160)
-        dim_color = (140, 140, 160)
-        p_color = active_color if self.history_filter_player != "all" else dim_color
-        m_color = active_color if self.history_filter_mode != "all" else dim_color
+        dim_color = self._gray_color()
+        p_color = header_color if self.history_filter_player != "all" else dim_color
+        m_color = header_color if self.history_filter_mode != "all" else dim_color
         filter_text = filter_font.render(f"Player: {player_label}  (P)", True, p_color)
         self.screen.blit(filter_text, (panel_x + 40, filter_y))
         filter_text2 = filter_font.render(f"Mode: {mode_label}  (M)", True, m_color)
@@ -1154,11 +1255,12 @@ class YahtzeeGame:
                    ("Player", panel_x + 210), ("Mode", panel_x + 350),
                    ("Date", panel_x + 470)]
         for text, x in headers:
-            surface = header_font.render(text, True, (60, 120, 160))
+            surface = header_font.render(text, True, header_color)
             self.screen.blit(surface, (x, header_y))
 
         # Divider line
-        pygame.draw.line(self.screen, (180, 180, 200),
+        divider_color = self._scorecard_border()
+        pygame.draw.line(self.screen, divider_color,
                          (panel_x + 20, header_y + 25),
                          (panel_x + panel_w - 20, header_y + 25))
 
@@ -1169,13 +1271,17 @@ class YahtzeeGame:
         entry_font = self._font(24)
         row_y = header_y + 35
 
+        text_color = self._text_color()
         if not entries:
-            no_data = entry_font.render("No scores recorded yet.", True, (150, 150, 150))
+            no_data = entry_font.render("No scores recorded yet.", True, self._gray_color())
             no_rect = no_data.get_rect(center=(WINDOW_WIDTH // 2, row_y + 40))
             self.screen.blit(no_data, no_rect)
         else:
             for i, entry in enumerate(entries):
-                color = (60, 60, 60) if i % 2 == 0 else (80, 80, 80)
+                if self.dark_mode:
+                    color = (190, 190, 200) if i % 2 == 0 else (160, 160, 170)
+                else:
+                    color = (60, 60, 60) if i % 2 == 0 else (80, 80, 80)
 
                 rank_text = entry_font.render(str(i + 1), True, color)
                 self.screen.blit(rank_text, (panel_x + 50, row_y))
@@ -1199,7 +1305,7 @@ class YahtzeeGame:
 
         # Footer
         footer_font = self._font(24)
-        footer = footer_font.render("P/M: filter  |  H or Escape to close", True, (140, 140, 160))
+        footer = footer_font.render("P/M: filter  |  H or Escape to close", True, self._gray_color())
         footer_rect = footer.get_rect(center=(WINDOW_WIDTH // 2, panel_y + panel_h - 25))
         self.screen.blit(footer, footer_rect)
 
@@ -1208,6 +1314,8 @@ class YahtzeeGame:
         cat = self.confirm_zero_category
         if cat is None:
             return
+
+        panel_bg, panel_border = self._panel_colors()
 
         # Semi-transparent background
         overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
@@ -1219,39 +1327,43 @@ class YahtzeeGame:
         dialog_x = (WINDOW_WIDTH - dialog_w) // 2
         dialog_y = (WINDOW_HEIGHT - dialog_h) // 2
         dialog_rect = pygame.Rect(dialog_x, dialog_y, dialog_w, dialog_h)
-        pygame.draw.rect(self.screen, (255, 255, 255), dialog_rect, border_radius=10)
+        pygame.draw.rect(self.screen, panel_bg, dialog_rect, border_radius=10)
         pygame.draw.rect(self.screen, (180, 80, 80), dialog_rect, width=2, border_radius=10)
 
         # Question text
         q_font = self._font(28)
-        q_text = q_font.render(f"Score 0 in {cat.value}?", True, BLACK)
+        q_text = q_font.render(f"Score 0 in {cat.value}?", True, self._text_color())
         q_rect = q_text.get_rect(center=(WINDOW_WIDTH // 2, dialog_y + 40))
         self.screen.blit(q_text, q_rect)
 
         # Instructions
         i_font = self._font(22)
-        i_text = i_font.render("Y / Enter to confirm,  N / Esc to cancel", True, (100, 100, 100))
+        i_text = i_font.render("Y / Enter to confirm,  N / Esc to cancel", True, self._gray_color())
         i_rect = i_text.get_rect(center=(WINDOW_WIDTH // 2, dialog_y + 80))
         self.screen.blit(i_text, i_rect)
 
     def draw_help_overlay(self):
         """Draw semi-transparent overlay showing keyboard controls."""
+        panel_bg, panel_border = self._panel_colors()
+        header_color = self._section_header_color()
+        text_color = self._text_color()
+
         # Semi-transparent background
         overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 180))
         self.screen.blit(overlay, (0, 0))
 
         # Panel
-        panel_w, panel_h = 500, 420
+        panel_w, panel_h = 500, 450
         panel_x = (WINDOW_WIDTH - panel_w) // 2
         panel_y = (WINDOW_HEIGHT - panel_h) // 2
         panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
-        pygame.draw.rect(self.screen, (250, 252, 255), panel_rect, border_radius=12)
-        pygame.draw.rect(self.screen, (100, 100, 120), panel_rect, width=2, border_radius=12)
+        pygame.draw.rect(self.screen, panel_bg, panel_rect, border_radius=12)
+        pygame.draw.rect(self.screen, panel_border, panel_rect, width=2, border_radius=12)
 
         # Title
         title_font = self._font(48)
-        title = title_font.render("CONTROLS", True, (60, 120, 160))
+        title = title_font.render("CONTROLS", True, header_color)
         title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, panel_y + 35))
         self.screen.blit(title, title_rect)
 
@@ -1267,6 +1379,7 @@ class YahtzeeGame:
             ("+/-", "AI speed"),
             ("Ctrl+Z", "Undo"),
             ("C", "Colorblind mode"),
+            ("D", "Dark mode"),
             ("Esc", "Close overlay / Quit"),
             ("? / F1", "This help screen"),
         ]
@@ -1278,23 +1391,26 @@ class YahtzeeGame:
         desc_x = panel_x + 220
 
         for key, desc in controls:
-            key_surface = key_font.render(key, True, (60, 120, 160))
-            desc_surface = desc_font.render(desc, True, (60, 60, 60))
+            key_surface = key_font.render(key, True, header_color)
+            desc_surface = desc_font.render(desc, True, text_color)
             self.screen.blit(key_surface, (key_x, row_y))
             self.screen.blit(desc_surface, (desc_x, row_y))
             row_y += 26
 
         # Footer
         footer_font = self._font(24)
-        footer = footer_font.render("Press ? or Escape to close", True, (140, 140, 160))
+        footer = footer_font.render("Press ? or Escape to close", True, self._gray_color())
         footer_rect = footer.get_rect(center=(WINDOW_WIDTH // 2, panel_y + panel_h - 25))
         self.screen.blit(footer, footer_rect)
 
     def draw(self):
         """Draw everything to the screen"""
         coord = self.coordinator
-        # Clear screen with subtle background color
-        self.screen.fill(BACKGROUND)
+        text_color = self._text_color()
+        header_color = self._section_header_color()
+
+        # Clear screen with themed background color
+        self.screen.fill(self._bg_color())
 
         dice = coord.dice
         rolls_used = coord.rolls_used
@@ -1303,10 +1419,11 @@ class YahtzeeGame:
 
         # Draw title with shadow effect
         font = self._font(72)
-        title_shadow = font.render("YAHTZEE", True, (180, 180, 180))
+        shadow_color = (60, 60, 70) if self.dark_mode else (180, 180, 180)
+        title_shadow = font.render("YAHTZEE", True, shadow_color)
         shadow_rect = title_shadow.get_rect(center=(WINDOW_WIDTH // 2 + 3, 53))
         self.screen.blit(title_shadow, shadow_rect)
-        title = font.render("YAHTZEE", True, SECTION_HEADER_COLOR)
+        title = font.render("YAHTZEE", True, header_color)
         title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, 50))
         self.screen.blit(title, title_rect)
 
@@ -1324,7 +1441,7 @@ class YahtzeeGame:
             round_text = round_font.render(turn_label, True, color)
             self.screen.blit(round_text, (50, 90))
         else:
-            round_text = round_font.render(f"Round {current_round}/13", True, BLACK)
+            round_text = round_font.render(f"Round {current_round}/13", True, text_color)
             self.screen.blit(round_text, (50, 90))
 
         # Draw AI/speed indicator
@@ -1337,19 +1454,24 @@ class YahtzeeGame:
         elif coord.multiplayer and coord.has_any_ai:
             ai_font = self._font(24)
             speed_label = coord.speed_name.capitalize()
-            ai_text = ai_font.render(f"Speed: {speed_label} (+/-)", True, (140, 140, 160))
+            ai_text = ai_font.render(f"Speed: {speed_label} (+/-)", True, self._gray_color())
             self.screen.blit(ai_text, (50, 120))
 
         # Draw player bar (multiplayer only)
         if coord.multiplayer:
             self.draw_player_bar()
 
+        # Get dice theme colors
+        dice_c, dot_c, shadow_c, border_c = self._dice_colors()
+        cup_c, cup_shadow, cup_border, cup_text = self._cup_colors()
+
         # Draw all dice sprites
         for i, sprite in enumerate(self.dice_sprites):
             die_state = dice[i]
 
             if rolls_used == 0 and not coord.is_rolling:
-                sprite.draw_in_cup(self.screen)
+                sprite.draw_in_cup(self.screen, cup_color=cup_c, shadow_color=cup_shadow,
+                                   border_color=cup_border, text_color=cup_text)
                 continue
 
             if coord.is_rolling:
@@ -1361,21 +1483,28 @@ class YahtzeeGame:
             if coord.is_rolling and not die_state.held:
                 shake_x = int(math.sin(coord.roll_timer * 0.5) * 3)
                 shake_y = int(math.cos(coord.roll_timer * 0.7) * 3)
-                sprite.draw(self.screen, display_state, shake_x, shake_y, colorblind=self.colorblind_mode)
+                sprite.draw(self.screen, display_state, shake_x, shake_y,
+                            colorblind=self.colorblind_mode,
+                            dice_color=dice_c, dot_color=dot_c,
+                            shadow_color=shadow_c, border_color=border_c)
             else:
-                sprite.draw(self.screen, display_state, colorblind=self.colorblind_mode)
+                sprite.draw(self.screen, display_state, colorblind=self.colorblind_mode,
+                            dice_color=dice_c, dot_color=dot_c,
+                            shadow_color=shadow_c, border_color=border_c)
 
         # Draw roll button
         self.roll_button.enabled = coord.can_roll_now
-        self.roll_button.draw(self.screen)
+        btn, hover, disabled, btn_border = self._button_colors()
+        self.roll_button.draw(self.screen, button_color=btn, hover_color=hover,
+                              disabled_color=disabled, border_color=btn_border)
 
         # Draw roll status
         roll_font = self._font(32)
         if rolls_used == 0:
-            roll_text = roll_font.render("Roll the dice!", True, SECTION_HEADER_COLOR)
+            roll_text = roll_font.render("Roll the dice!", True, header_color)
         else:
             rolls_remaining = MAX_ROLLS_PER_TURN - rolls_used
-            roll_text = roll_font.render(f"Rolls left: {rolls_remaining}", True, BLACK)
+            roll_text = roll_font.render(f"Rolls left: {rolls_remaining}", True, text_color)
         self.screen.blit(roll_text, (200, 560))
 
         # Draw AI reasoning text below roll status
@@ -1396,7 +1525,7 @@ class YahtzeeGame:
             if current_line:
                 lines.append(current_line)
 
-            reason_color = (120, 120, 140)
+            reason_color = self._gray_color()
             reason_y = 590
             for line in lines:
                 reason_surface = reason_font.render(line, True, reason_color)
