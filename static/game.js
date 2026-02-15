@@ -103,6 +103,7 @@ function renderDice(s) {
 
         const el = document.createElement("div");
         el.className = "die";
+        el.dataset.dieIndex = i;  // For event delegation
 
         if (s.rolls_used === 0 && !s.is_rolling) {
             el.classList.add("in-cup");
@@ -131,13 +132,6 @@ function renderDice(s) {
                 setTimeout(() => el.classList.remove("bounce"), 300);
             }
         }
-
-        // Click to hold
-        el.addEventListener("click", () => {
-            if (s.is_human_turn && !s.is_rolling && !s.game_over && s.rolls_used > 0) {
-                sendAction("hold", { die_index: i });
-            }
-        });
 
         wrapper.appendChild(el);
 
@@ -246,15 +240,9 @@ function addCategoryRow(tbody, cat, idx, sc, potential, flashCat, aiChoice, kbId
     tr.appendChild(nameTd);
     tr.appendChild(scoreTd);
 
-    // Click to score
+    // Data attribute for event delegation (click/hover handled on tbody)
     if (!filled) {
-        tr.addEventListener("click", () => {
-            if (s.is_human_turn && !s.game_over && !s.is_rolling && s.rolls_used > 0) {
-                sendAction("score", { category: cat });
-            }
-        });
-        tr.addEventListener("mouseenter", () => sendAction("hover", { category: cat }));
-        tr.addEventListener("mouseleave", () => sendAction("clear_hover"));
+        tr.dataset.category = cat;
     }
 
     tbody.appendChild(tr);
@@ -430,6 +418,41 @@ function playTone(freq, duration, volume) {
     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
     osc.stop(audioCtx.currentTime + duration);
 }
+
+// ── Event delegation (persistent handlers on containers) ───────────────────
+// Why: renderDice/renderScorecard rebuild the DOM every frame (~30 FPS).
+// Attaching click handlers to individual elements doesn't work because
+// the element can be destroyed between mousedown and mouseup. Event
+// delegation on the stable parent containers avoids this.
+
+document.getElementById("dice-container").addEventListener("click", (e) => {
+    const dieEl = e.target.closest(".die");
+    if (!dieEl || !state) return;
+    const idx = parseInt(dieEl.dataset.dieIndex);
+    if (isNaN(idx)) return;
+    if (state.is_human_turn && !state.is_rolling && !state.game_over && state.rolls_used > 0) {
+        sendAction("hold", { die_index: idx });
+    }
+});
+
+document.getElementById("scorecard-body").addEventListener("click", (e) => {
+    const tr = e.target.closest("tr[data-category]");
+    if (!tr || !state) return;
+    const cat = tr.dataset.category;
+    if (state.is_human_turn && !state.game_over && !state.is_rolling && state.rolls_used > 0) {
+        sendAction("score", { category: cat });
+    }
+});
+
+document.getElementById("scorecard-body").addEventListener("mouseenter", (e) => {
+    const tr = e.target.closest("tr[data-category]");
+    if (tr) sendAction("hover", { category: tr.dataset.category });
+}, true);  // useCapture for mouseenter delegation
+
+document.getElementById("scorecard-body").addEventListener("mouseleave", (e) => {
+    const tr = e.target.closest("tr[data-category]");
+    if (tr) sendAction("clear_hover");
+}, true);
 
 // ── Start ──────────────────────────────────────────────────────────────────
 
