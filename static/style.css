@@ -3,7 +3,7 @@
 :root {
     --bg: #f5faff;
     --text: #000;
-    --text-dim: #888;
+    --text-dim: #666;
     --panel-bg: #fafcff;
     --panel-border: #c8c8d8;
     --header-color: #3c78a0;
@@ -22,7 +22,7 @@
 .dark-mode {
     --bg: #1e2026;
     --text: #dcdce6;
-    --text-dim: #5a5a64;
+    --text-dim: #8a8a94;
     --panel-bg: #2d3038;
     --panel-border: #464855;
     --header-color: #64aade;
