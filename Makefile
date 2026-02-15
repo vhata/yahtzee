@@ -1,7 +1,13 @@
-.PHONY: play test test-all bench clean setup coverage
+.PHONY: play play-tui play-web test test-all bench clean setup coverage
 
 play:
 	uv run python main.py
+
+play-tui:
+	uv run python tui.py
+
+play-web:
+	uv run python web.py
 
 test:
 	uv run pytest -v -m "not slow"
@@ -14,6 +20,16 @@ bench:
 
 setup:
 	uv sync --extra dev
+
+setup-tui:
+	uv pip install "textual>=0.50.0"
+
+setup-web:
+	uv pip install "flask>=3.0.0" "flask-sock>=0.7.0"
+
+setup-all:
+	uv sync --extra dev
+	uv pip install "textual>=0.50.0" "flask>=3.0.0" "flask-sock>=0.7.0"
 
 coverage:
 	uv run pytest -m "not slow" --cov --cov-report=term-missing --cov-report=html
