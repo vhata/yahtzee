@@ -319,6 +319,15 @@ class YahtzeeGame:
         self.hovered_category = None
         self.showing_history = False
 
+        # Font cache — avoids recreating Font objects every frame
+        self._font_cache = {}
+
+    def _font(self, size):
+        """Return a cached pygame Font of the given size."""
+        if size not in self._font_cache:
+            self._font_cache[size] = pygame.font.Font(None, size)
+        return self._font_cache[size]
+
     def handle_events(self):
         """Handle pygame events — translates input to coordinator actions"""
         coord = self.coordinator
@@ -490,9 +499,9 @@ class YahtzeeGame:
         pygame.draw.rect(self.screen, (180, 180, 200), panel_rect, width=2, border_radius=12)
 
         # Fonts
-        font = pygame.font.Font(None, 24)
-        font_small = pygame.font.Font(None, 20)
-        font_bold = pygame.font.Font(None, 28)
+        font = self._font(24)
+        font_small = self._font(20)
+        font_bold = self._font(28)
 
         y = scorecard_y
 
@@ -611,7 +620,7 @@ class YahtzeeGame:
         coord = self.coordinator
         bar_y = 130
         bar_height = 32
-        font = pygame.font.Font(None, 26)
+        font = self._font(26)
         num = coord.num_players
         # Calculate per-player chip width to fit across the available width
         bar_width = min(180, (WINDOW_WIDTH - 100) // num)
@@ -653,7 +662,7 @@ class YahtzeeGame:
         name, strategy = coord.player_configs[idx]
         color = PLAYER_COLORS[idx % len(PLAYER_COLORS)]
 
-        font = pygame.font.Font(None, 56)
+        font = self._font(56)
         if strategy is None:
             label = f"{name}'s Turn!"
         else:
@@ -691,22 +700,22 @@ class YahtzeeGame:
         scorecard = coord.scorecard
 
         # Game Over title
-        title_font = pygame.font.Font(None, 72)
+        title_font = self._font(72)
         title_text = title_font.render("GAME OVER!", True, BLACK)
         title_rect = title_text.get_rect(center=(WINDOW_WIDTH // 2, 60))
         self.screen.blit(title_text, title_rect)
 
         # Final score
-        score_font = pygame.font.Font(None, 56)
+        score_font = self._font(56)
         final_score = scorecard.get_grand_total()
         score_text = score_font.render(f"Final Score: {final_score}", True, (50, 100, 150))
         score_rect = score_text.get_rect(center=(WINDOW_WIDTH // 2, 115))
         self.screen.blit(score_text, score_rect)
 
         # Fonts for breakdown
-        header_font = pygame.font.Font(None, 30)
-        cat_font = pygame.font.Font(None, 24)
-        total_font = pygame.font.Font(None, 28)
+        header_font = self._font(30)
+        cat_font = self._font(24)
+        total_font = self._font(28)
 
         # --- Left column: Upper section ---
         left_x = 180
@@ -762,7 +771,7 @@ class YahtzeeGame:
         self.screen.blit(sub_text, (right_x + 10, y))
 
         # Grand total centered below both columns
-        grand_font = pygame.font.Font(None, 40)
+        grand_font = self._font(40)
         grand_text = grand_font.render(f"GRAND TOTAL: {final_score}", True, BLACK)
         grand_rect = grand_text.get_rect(center=(WINDOW_WIDTH // 2, 430))
         self.screen.blit(grand_text, grand_rect)
@@ -770,7 +779,7 @@ class YahtzeeGame:
         # Yahtzee bonus row (only if any bonuses were earned)
         if scorecard.yahtzee_bonus_count > 0:
             bonus_amount = scorecard.yahtzee_bonus_count * 100
-            yb_font = pygame.font.Font(None, 30)
+            yb_font = self._font(30)
             yb_text = yb_font.render(f"Yahtzee Bonus: +{bonus_amount}", True, VALID_SCORE_COLOR)
             yb_rect = yb_text.get_rect(center=(WINDOW_WIDTH // 2, 452))
             self.screen.blit(yb_text, yb_rect)
@@ -778,12 +787,12 @@ class YahtzeeGame:
         # High scores section
         high_scores = get_high_scores(player_type="human", limit=5)
         if high_scores:
-            hs_font = pygame.font.Font(None, 28)
+            hs_font = self._font(28)
             hs_label = hs_font.render("Top Human Scores", True, SECTION_HEADER_COLOR)
             hs_rect = hs_label.get_rect(center=(WINDOW_WIDTH // 2, 468))
             self.screen.blit(hs_label, hs_rect)
 
-            hs_entry_font = pygame.font.Font(None, 24)
+            hs_entry_font = self._font(24)
             for rank, entry in enumerate(high_scores):
                 hs_y = 490 + rank * 22
                 score_val = entry.get("score", 0)
@@ -801,7 +810,7 @@ class YahtzeeGame:
         num = coord.num_players
 
         # Game Over title
-        title_font = pygame.font.Font(None, 64)
+        title_font = self._font(64)
         title_text = title_font.render("GAME OVER!", True, BLACK)
         title_rect = title_text.get_rect(center=(WINDOW_WIDTH // 2, 45))
         self.screen.blit(title_text, title_rect)
@@ -812,7 +821,7 @@ class YahtzeeGame:
         winner_name = coord.player_configs[winner_idx][0]
         winner_color = PLAYER_COLORS[winner_idx % len(PLAYER_COLORS)]
 
-        winner_font = pygame.font.Font(None, 36)
+        winner_font = self._font(36)
         winner_text = winner_font.render(f"{winner_name} wins!", True, winner_color)
         winner_rect = winner_text.get_rect(center=(WINDOW_WIDTH // 2, 80))
         self.screen.blit(winner_text, winner_rect)
@@ -825,10 +834,10 @@ class YahtzeeGame:
         row_height = 22
         grid_y = 105
 
-        cat_font = pygame.font.Font(None, 21)
-        header_font = pygame.font.Font(None, 22)
-        section_font = pygame.font.Font(None, 22)
-        total_font = pygame.font.Font(None, 24)
+        cat_font = self._font(21)
+        header_font = self._font(22)
+        section_font = self._font(22)
+        total_font = self._font(24)
 
         upper_cats = [Category.ONES, Category.TWOS, Category.THREES,
                       Category.FOURS, Category.FIVES, Category.SIXES]
@@ -959,13 +968,13 @@ class YahtzeeGame:
         pygame.draw.rect(self.screen, (100, 100, 120), panel_rect, width=2, border_radius=12)
 
         # Title
-        title_font = pygame.font.Font(None, 48)
+        title_font = self._font(48)
         title = title_font.render("SCORE HISTORY", True, (60, 120, 160))
         title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, panel_y + 35))
         self.screen.blit(title, title_rect)
 
         # Column headers
-        header_font = pygame.font.Font(None, 26)
+        header_font = self._font(26)
         header_y = panel_y + 70
         headers = [("Rank", panel_x + 40), ("Score", panel_x + 110),
                    ("Player", panel_x + 210), ("Mode", panel_x + 350),
@@ -981,7 +990,7 @@ class YahtzeeGame:
 
         # Score entries
         entries = get_recent_scores(limit=20)
-        entry_font = pygame.font.Font(None, 24)
+        entry_font = self._font(24)
         row_y = header_y + 35
 
         if not entries:
@@ -1013,7 +1022,7 @@ class YahtzeeGame:
                 row_y += 22
 
         # Footer
-        footer_font = pygame.font.Font(None, 24)
+        footer_font = self._font(24)
         footer = footer_font.render("Press H or Escape to close", True, (140, 140, 160))
         footer_rect = footer.get_rect(center=(WINDOW_WIDTH // 2, panel_y + panel_h - 25))
         self.screen.blit(footer, footer_rect)
@@ -1030,7 +1039,7 @@ class YahtzeeGame:
         current_round = coord.current_round
 
         # Draw title with shadow effect
-        font = pygame.font.Font(None, 72)
+        font = self._font(72)
         title_shadow = font.render("YAHTZEE", True, (180, 180, 180))
         shadow_rect = title_shadow.get_rect(center=(WINDOW_WIDTH // 2 + 3, 53))
         self.screen.blit(title_shadow, shadow_rect)
@@ -1039,7 +1048,7 @@ class YahtzeeGame:
         self.screen.blit(title, title_rect)
 
         # Draw round and turn indicator
-        round_font = pygame.font.Font(None, 36)
+        round_font = self._font(36)
         if coord.multiplayer:
             idx = coord.current_player_index
             name, strategy = coord.player_configs[idx]
@@ -1057,13 +1066,13 @@ class YahtzeeGame:
 
         # Draw AI/speed indicator
         if not coord.multiplayer and coord.ai_strategy:
-            ai_font = pygame.font.Font(None, 28)
+            ai_font = self._font(28)
             ai_name = coord.ai_strategy.__class__.__name__.replace("Strategy", "")
             speed_label = coord.speed_name.capitalize()
             ai_text = ai_font.render(f"AI: {ai_name} | Speed: {speed_label} (+/-)", True, (180, 80, 80))
             self.screen.blit(ai_text, (50, 120))
         elif coord.multiplayer and coord.has_any_ai:
-            ai_font = pygame.font.Font(None, 24)
+            ai_font = self._font(24)
             speed_label = coord.speed_name.capitalize()
             ai_text = ai_font.render(f"Speed: {speed_label} (+/-)", True, (140, 140, 160))
             self.screen.blit(ai_text, (50, 120))
@@ -1098,7 +1107,7 @@ class YahtzeeGame:
         self.roll_button.draw(self.screen)
 
         # Draw roll status
-        roll_font = pygame.font.Font(None, 32)
+        roll_font = self._font(32)
         if rolls_used == 0:
             roll_text = roll_font.render("Roll the dice!", True, SECTION_HEADER_COLOR)
         else:
@@ -1108,7 +1117,7 @@ class YahtzeeGame:
 
         # Draw AI reasoning text below roll status
         if coord.current_ai_strategy and coord.ai_reason:
-            reason_font = pygame.font.Font(None, 24)
+            reason_font = self._font(24)
             max_width = 480
             words = coord.ai_reason.split()
             lines = []
