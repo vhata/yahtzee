@@ -728,7 +728,7 @@ def parse_args(argv=None):
     # Multiplayer mode
     parser.add_argument("--players", nargs="+", choices=["human", "random", "greedy", "ev", "optimal"],
                         metavar="TYPE",
-                        help="Multiplayer: list player types (human, random, greedy, ev)")
+                        help="Multiplayer: list player types (human, random, greedy, ev, optimal)")
     parser.add_argument("--names", nargs="+", metavar="NAME",
                         help="Custom player names (must match --players count)")
     parser.add_argument("--speed", choices=["slow", "normal", "fast"], default="normal",
