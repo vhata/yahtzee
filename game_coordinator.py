@@ -622,6 +622,8 @@ class GameCoordinator:
             dice = tuple(
                 DieState(value=d["value"], held=d["held"]) for d in data["dice"]
             )
+            if len(dice) != 5 or not all(1 <= d.value <= 6 for d in dice):
+                return None
             rolls_used = data["rolls_used"]
             current_round = data["current_round"]
 
