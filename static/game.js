@@ -35,9 +35,13 @@ function connect() {
     ws.onerror = () => banner.classList.remove("hidden");
 
     ws.onmessage = (event) => {
-        prevState = state;
-        state = JSON.parse(event.data);
-        render(state);
+        try {
+            prevState = state;
+            state = JSON.parse(event.data);
+            render(state);
+        } catch (e) {
+            console.error("Failed to parse server message:", e);
+        }
     };
 }
 
