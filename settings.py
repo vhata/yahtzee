@@ -57,12 +57,15 @@ def save_settings(settings, path=None):
     try:
         data = json.dumps(settings, indent=2)
         fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+        closed = False
         try:
             os.write(fd, data.encode())
             os.close(fd)
+            closed = True
             os.replace(tmp, path)
         except BaseException:
-            os.close(fd)
+            if not closed:
+                os.close(fd)
             try:
                 os.unlink(tmp)
             except OSError:
