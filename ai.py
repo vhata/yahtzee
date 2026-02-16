@@ -485,7 +485,7 @@ class ExpectedValueStrategy(YahtzeeStrategy):
         - Zero score: heavy penalty based on category's expected value
         - Upper bonus delta: probability-based model of bonus impact
         """
-        raw_score = float(calculate_score(cat, dice))
+        raw_score = float(calculate_score_in_context(cat, dice, state.scorecard))
         adjustment = 0.0
 
         # Opportunity cost: penalize using a category for less than its EV
