@@ -517,11 +517,23 @@ function handleScoreTap(e) {
 
 const diceContainer = document.getElementById("dice-container");
 diceContainer.addEventListener("mousedown", handleDieTap);
-diceContainer.addEventListener("touchstart", (e) => { e.preventDefault(); handleDieTap(e); }, { passive: false });
+diceContainer.addEventListener("touchstart", (e) => {
+    const dieEl = e.target.closest(".die");
+    if (dieEl) {
+        e.preventDefault();
+        handleDieTap(e);
+    }
+}, { passive: false });
 
 const scorecardBody = document.getElementById("scorecard-body");
 scorecardBody.addEventListener("mousedown", handleScoreTap);
-scorecardBody.addEventListener("touchstart", (e) => { e.preventDefault(); handleScoreTap(e); }, { passive: false });
+scorecardBody.addEventListener("touchstart", (e) => {
+    const tr = e.target.closest("tr[data-category]");
+    if (tr) {
+        e.preventDefault();
+        handleScoreTap(e);
+    }
+}, { passive: false });
 
 scorecardBody.addEventListener("mouseenter", (e) => {
     const tr = e.target.closest("tr[data-category]");
