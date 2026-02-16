@@ -153,7 +153,7 @@ def _handle_action(adapter, action):
 
     elif cmd == "navigate_category":
         direction = action.get("direction", 1)
-        adapter.navigate_category(direction)
+        adapter.navigate_category(1 if direction > 0 else -1)
 
     elif cmd == "hover":
         cat_name = action.get("category", "")

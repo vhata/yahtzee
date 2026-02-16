@@ -683,7 +683,12 @@ class GameCoordinator:
 
 
 def _make_strategy(token):
-    """Create a strategy instance from a CLI token, or None for 'human'."""
+    """Create a strategy instance from a CLI token, or None for 'human'.
+
+    Returns None for unrecognized tokens (treated as human player).
+    This is intentional — raising would break autosave loading of
+    corrupted files.
+    """
     if token == "human":
         return None
     elif token == "random":
@@ -694,6 +699,7 @@ def _make_strategy(token):
         return ExpectedValueStrategy()
     elif token == "optimal":
         return OptimalStrategy()
+    return None
 
 
 def parse_args(argv=None):
