@@ -204,6 +204,7 @@ class GameCoordinator:
             "ai_showing_score_choice": self.ai_showing_score_choice,
             "ai_score_choice_category": self.ai_score_choice_category,
             "ai_score_choice_timer": self.ai_score_choice_timer,
+            "game_log_length": len(self.game_log.entries),
         }
         self._undo_stack.append(snapshot)
 
@@ -238,6 +239,7 @@ class GameCoordinator:
         self.ai_showing_score_choice = snapshot["ai_showing_score_choice"]
         self.ai_score_choice_category = snapshot["ai_score_choice_category"]
         self.ai_score_choice_timer = snapshot["ai_score_choice_timer"]
+        self.game_log.entries = self.game_log.entries[:snapshot["game_log_length"]]
         return True
 
     @property
