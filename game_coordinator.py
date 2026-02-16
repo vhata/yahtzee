@@ -638,10 +638,13 @@ class GameCoordinator:
                 scorecards = tuple(
                     cls._dict_to_scorecard(sc_data) for sc_data in data["scorecards"]
                 )
+                current_player_index = data["current_player_index"]
+                if len(scorecards) != len(players) or not (0 <= current_player_index < len(players)):
+                    return None
                 coord.mp_state = MultiplayerGameState(
                     num_players=len(players),
                     scorecards=scorecards,
-                    current_player_index=data["current_player_index"],
+                    current_player_index=current_player_index,
                     dice=dice,
                     rolls_used=rolls_used,
                     current_round=current_round,
