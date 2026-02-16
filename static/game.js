@@ -195,14 +195,14 @@ function renderTurnLog(s) {
     const recent = s.turn_log.slice(-8);
     let html = '<div class="turn-log-header">Recent Turns</div>';
     for (const entry of recent) {
-        const rolls = entry.rolls.map(r => "[" + r.join(",") + "]").join(" → ");
-        const cat = entry.category || "?";
-        const score = entry.score != null ? entry.score : "?";
+        const rolls = escapeHtml(entry.rolls.map(r => "[" + r.join(",") + "]").join(" \u2192 "));
+        const cat = escapeHtml(entry.category || "?");
+        const score = escapeHtml(String(entry.score != null ? entry.score : "?"));
         const color = playerColor(entry.player_index);
         html += `<div class="turn-log-entry" style="border-left: 3px solid ${color};">`;
         html += `<span class="turn-log-player" style="color: ${color};">${escapeHtml(entry.player_name)}</span> `;
         if (rolls) {
-            html += `<span class="turn-log-rolls">${rolls} →</span> `;
+            html += `<span class="turn-log-rolls">${rolls} \u2192</span> `;
         }
         html += `<span class="turn-log-score">${cat}: ${score}</span>`;
         html += `</div>`;
