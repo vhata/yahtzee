@@ -1,11 +1,12 @@
 /**
  * Yahtzee PWA Service Worker — cache static assets for offline use.
  *
- * Strategy: cache-first for static assets (CSS/JS/icons), network-first
- * for everything else (HTML pages, WebSocket, API calls).
+ * Strategy: stale-while-revalidate for static assets (serves cached version
+ * immediately, fetches fresh copy in background to update cache for next load).
+ * Network-first for everything else (HTML pages, WebSocket, API calls).
  */
 
-const CACHE_NAME = "yahtzee-v1";
+const CACHE_NAME = "yahtzee-v2";
 const STATIC_ASSETS = [
     "/static/style.css",
     "/static/dice.css",
@@ -33,10 +34,19 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
     const url = new URL(event.request.url);
 
-    // Only cache-first for static assets
+    // Stale-while-revalidate for static assets: serve cached version
+    // immediately, fetch fresh copy in background to update cache.
     if (url.pathname.startsWith("/static/")) {
         event.respondWith(
-            caches.match(event.request).then((cached) => cached || fetch(event.request))
+            caches.open(CACHE_NAME).then((cache) =>
+                cache.match(event.request).then((cached) => {
+                    const fetched = fetch(event.request).then((response) => {
+                        cache.put(event.request, response.clone());
+                        return response;
+                    });
+                    return cached || fetched;
+                })
+            )
         );
         return;
     }
