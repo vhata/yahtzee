@@ -6,7 +6,9 @@ The GUI layer (main.py) delegates to this and only handles rendering + events.
 """
 import argparse
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 from game_engine import (
@@ -576,7 +578,22 @@ class GameCoordinator:
             data["strategy"] = self._strategy_to_token(self.ai_strategy)
 
         try:
-            path.write_text(json.dumps(data, indent=2))
+            raw = json.dumps(data, indent=2).encode()
+            fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+            closed = False
+            try:
+                os.write(fd, raw)
+                os.close(fd)
+                closed = True
+                os.replace(tmp, path)
+            except BaseException:
+                if not closed:
+                    os.close(fd)
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
         except OSError:
             pass  # Silently fail — autosave is best-effort
 
