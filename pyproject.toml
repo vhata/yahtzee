@@ -4,20 +4,21 @@ version = "0.1.0"
 description = "A Yahtzee game implementation using pygame"
 requires-python = ">=3.10"
 dependencies = [
-    "pygame>=2.5.0",
+    "pygame>=2.5.0,<3",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
+    "pytest>=7.0.0,<9",
+    "pytest-cov>=4.0.0,<7",
+    "ruff>=0.4.0,<1",
 ]
 tui = [
-    "textual>=0.50.0",
+    "textual>=0.50.0,<2",
 ]
 web = [
-    "flask>=3.0.0",
-    "flask-sock>=0.7.0",
+    "flask>=3.0.0,<4",
+    "flask-sock>=0.7.0,<1",
 ]
 
 [tool.pytest.ini_options]
@@ -34,3 +35,10 @@ omit = ["main.py", "sounds.py", "tui.py", "web.py", "yahtzee.py", "test_*.py", "
 fail_under = 80
 show_missing = true
 exclude_lines = ["pragma: no cover", "if __name__"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]

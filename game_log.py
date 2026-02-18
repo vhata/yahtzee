@@ -3,9 +3,9 @@
 Pure Python, no pygame dependency. Captures rolls, holds, and scoring
 decisions for each turn.
 """
+from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from dataclasses import dataclass
 
 from game_engine import Category
 
@@ -16,20 +16,20 @@ class LogEntry:
     turn: int                                   # 1-13
     player_index: int                           # 0 for single-player
     event_type: str                             # "roll", "hold", "score"
-    dice_values: Tuple[int, ...]
-    held_indices: Optional[Tuple[int, ...]] = None
-    category: Optional[Category] = None
-    score: Optional[int] = None
+    dice_values: tuple[int, ...]
+    held_indices: tuple[int, ...] | None = None
+    category: Category | None = None
+    score: int | None = None
     roll_number: int = 0                        # 1-3 for rolls
 
 
 class GameLog:
     """Accumulates LogEntry records during a game."""
 
-    def __init__(self):
-        self.entries: List[LogEntry] = []
+    def __init__(self) -> None:
+        self.entries: list[LogEntry] = []
 
-    def log_roll(self, turn, player_index, roll_number, dice_values):
+    def log_roll(self, turn: int, player_index: int, roll_number: int, dice_values: list[int]) -> None:
         """Record a dice roll."""
         self.entries.append(LogEntry(
             turn=turn,
@@ -39,7 +39,7 @@ class GameLog:
             roll_number=roll_number,
         ))
 
-    def log_hold_change(self, turn, player_index, held_indices, dice_values):
+    def log_hold_change(self, turn: int, player_index: int, held_indices: list[int], dice_values: list[int]) -> None:
         """Record a hold/unhold change."""
         self.entries.append(LogEntry(
             turn=turn,
@@ -49,7 +49,7 @@ class GameLog:
             held_indices=tuple(held_indices),
         ))
 
-    def log_score(self, turn, player_index, category, score, dice_values):
+    def log_score(self, turn: int, player_index: int, category: Category, score: int, dice_values: list[int]) -> None:
         """Record a scoring decision."""
         self.entries.append(LogEntry(
             turn=turn,
@@ -60,16 +60,16 @@ class GameLog:
             score=score,
         ))
 
-    def get_turn_entries(self, turn, player_index=0):
+    def get_turn_entries(self, turn: int, player_index: int = 0) -> list[LogEntry]:
         """Return all entries for a specific turn and player."""
         return [e for e in self.entries
                 if e.turn == turn and e.player_index == player_index]
 
-    def get_score_entries(self, player_index=0):
+    def get_score_entries(self, player_index: int = 0) -> list[LogEntry]:
         """Return only scoring entries for a player."""
         return [e for e in self.entries
                 if e.event_type == "score" and e.player_index == player_index]
 
-    def clear(self):
+    def clear(self) -> None:
         """Remove all entries."""
         self.entries = []

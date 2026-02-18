@@ -8,22 +8,22 @@ overlays, multiplayer, and AI spectator support.
 import random
 import sys
 
+from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, Center
+from textual.containers import Center, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widget import Widget
-from textual.widgets import Button, DataTable, Footer, Header, Label, Static
-from textual.reactive import reactive
-from textual import on
+from textual.widgets import Button, Footer, Header, Static
 
-from game_engine import Category, calculate_score_in_context
-from game_coordinator import GameCoordinator, parse_args, _make_strategy
 from frontend_adapter import (
-    FrontendAdapter, NullSound,
-    CATEGORY_ORDER, CATEGORY_TOOLTIPS, OPTIMAL_EXPECTED_TOTAL,
+    CATEGORY_ORDER,
+    CATEGORY_TOOLTIPS,
+    OPTIMAL_EXPECTED_TOTAL,
+    FrontendAdapter,
+    NullSound,
 )
-
+from game_coordinator import GameCoordinator, _make_strategy, parse_args
+from game_engine import calculate_score_in_context
 
 # ── Unicode die faces ─────────────────────────────────────────────────────────
 
@@ -381,7 +381,7 @@ class HistoryScreen(ModalScreen):
         p_label = adapter.history_filter_player.capitalize()
         m_label = adapter.history_filter_mode.capitalize()
 
-        text = f"[bold]SCORE HISTORY[/bold]\n"
+        text = "[bold]SCORE HISTORY[/bold]\n"
         text += f"Player: {p_label} (P)  |  Mode: {m_label} (M)\n"
         text += "─" * 60 + "\n"
         text += f"{'#':<4} {'Score':<8} {'Player':<12} {'Mode':<14} {'Date':<12}\n"
@@ -447,7 +447,9 @@ class ReplayScreen(ModalScreen):
                 score_val = entry.score if entry.score is not None else "?"
 
                 if coord.multiplayer:
-                    pname = coord.player_configs[entry.player_index][0] if entry.player_index < len(coord.player_configs) else f"P{entry.player_index}"
+                    pname = (coord.player_configs[entry.player_index][0]
+                            if entry.player_index < len(coord.player_configs)
+                            else f"P{entry.player_index}")
                     line = f"T{entry.turn} {pname}: {dice_str} → {cat_name}: {score_val}"
                 else:
                     line = f"Turn {entry.turn}: {dice_str} → {cat_name}: {score_val}"

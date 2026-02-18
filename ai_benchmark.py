@@ -12,7 +12,10 @@ import statistics
 import time
 
 from ai import (
-    RandomStrategy, GreedyStrategy, ExpectedValueStrategy, OptimalStrategy,
+    ExpectedValueStrategy,
+    GreedyStrategy,
+    OptimalStrategy,
+    RandomStrategy,
     play_game,
 )
 

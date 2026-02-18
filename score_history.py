@@ -3,6 +3,7 @@
 Stores game results in ~/.yahtzee_scores.json as a JSON list,
 capped at 1000 entries. No pygame dependency.
 """
+from __future__ import annotations
 
 import json
 import os
@@ -13,12 +14,12 @@ from pathlib import Path
 MAX_ENTRIES = 1000
 
 
-def _default_path():
+def _default_path() -> Path:
     """Return the default path for the scores file."""
     return Path.home() / ".yahtzee_scores.json"
 
 
-def _load_scores(path=None):
+def _load_scores(path: str | Path | None = None) -> list[dict]:
     """Load scores from the JSON file. Returns empty list on missing/corrupt."""
     if path is None:
         path = _default_path()
@@ -32,7 +33,7 @@ def _load_scores(path=None):
         return []
 
 
-def _save_scores(entries, path=None):
+def _save_scores(entries: list[dict], path: str | Path | None = None) -> None:
     """Write score entries to the JSON file atomically.
 
     Writes to a temp file then does os.replace() so a crash mid-write
@@ -59,7 +60,7 @@ def _save_scores(entries, path=None):
         raise
 
 
-def record_score(score, player_type="human", path=None):
+def record_score(score: int, player_type: str = "human", path: str | Path | None = None) -> None:
     """Record a single-player game score.
 
     Creates an entry with score, player_type, date (ISO format), and
@@ -79,7 +80,7 @@ def record_score(score, player_type="human", path=None):
     _save_scores(entries, path)
 
 
-def record_multiplayer_scores(results, path=None):
+def record_multiplayer_scores(results: list[dict], path: str | Path | None = None) -> None:
     """Record multiplayer game results.
 
     Args:
@@ -103,7 +104,7 @@ def record_multiplayer_scores(results, path=None):
     _save_scores(entries, path)
 
 
-def get_high_scores(player_type=None, limit=10, path=None):
+def get_high_scores(player_type: str | None = None, limit: int = 10, path: str | Path | None = None) -> list[dict]:
     """Return top scores sorted descending.
 
     Args:
@@ -120,12 +121,12 @@ def get_high_scores(player_type=None, limit=10, path=None):
     return entries[:limit]
 
 
-def get_all_scores(path=None):
+def get_all_scores(path: str | Path | None = None) -> list[dict]:
     """Return all score entries."""
     return _load_scores(path)
 
 
-def get_recent_scores(limit=20, path=None):
+def get_recent_scores(limit: int = 20, path: str | Path | None = None) -> list[dict]:
     """Return most recent score entries, newest first.
 
     Args:
@@ -139,7 +140,9 @@ def get_recent_scores(limit=20, path=None):
     return entries[:limit]
 
 
-def get_recent_scores_filtered(limit=20, player_type=None, mode=None, path=None):
+def get_recent_scores_filtered(
+    limit: int = 20, player_type: str | None = None, mode: str | None = None, path: str | Path | None = None,
+) -> list[dict]:
     """Return most recent score entries with optional filters, newest first.
 
     Args:

@@ -5,19 +5,26 @@ Yahtzee Game - A graphical implementation using pygame
 Thin rendering shell that delegates all game coordination to GameCoordinator
 and UI state management to FrontendAdapter.
 """
-import pygame
-import sys
-import random
 import math
-from game_engine import (
-    Category, calculate_score, calculate_score_in_context, DieState,
-)
-from game_coordinator import GameCoordinator, parse_args, _make_strategy
-from sounds import SoundManager
+import random
+import sys
+
+import pygame
+
 from frontend_adapter import (
-    FrontendAdapter, SoundInterface,
-    CATEGORY_ORDER, CATEGORY_TOOLTIPS, OPTIMAL_EXPECTED_TOTAL,
+    CATEGORY_ORDER,
+    CATEGORY_TOOLTIPS,
+    OPTIMAL_EXPECTED_TOTAL,
+    FrontendAdapter,
+    SoundInterface,
 )
+from game_coordinator import GameCoordinator, _make_strategy, parse_args
+from game_engine import (
+    Category,
+    DieState,
+    calculate_score_in_context,
+)
+from sounds import SoundManager
 
 # Initialize pygame (mixer pre-init for low-latency audio)
 pygame.mixer.pre_init(44100, -16, 1, 512)
@@ -401,7 +408,9 @@ class YahtzeeGame:
         play_again_height = 60
         play_again_x = (WINDOW_WIDTH - play_again_width) // 2
         play_again_y = 620
-        self.play_again_button = Button(play_again_x, play_again_y, play_again_width, play_again_height, "PLAY AGAIN", 40)
+        self.play_again_button = Button(
+            play_again_x, play_again_y, play_again_width, play_again_height, "PLAY AGAIN", 40
+        )
 
         # Animation state (GUI concern only — randomized display values during roll)
         self.animation_dice_values = [die.value for die in self.coordinator.dice]
@@ -627,7 +636,8 @@ class YahtzeeGame:
                     if adapter.do_undo():
                         self.animation_dice_values = [die.value for die in coord.dice]
                 # Keyboard shortcuts for human players
-                if is_human_turn and not game_over and not coord.is_rolling and not adapter.showing_history and not adapter.showing_help:
+                if (is_human_turn and not game_over and not coord.is_rolling
+                        and not adapter.showing_history and not adapter.showing_help):
                     if event.key == pygame.K_SPACE:
                         adapter.do_roll()
                     elif pygame.K_1 <= event.key <= pygame.K_5:
@@ -668,7 +678,9 @@ class YahtzeeGame:
                                 break
 
             # Handle button clicks (only if not currently rolling and human turn)
-            if is_human_turn and not adapter.showing_history and not adapter.showing_help and adapter.confirm_zero_category is None and self.roll_button.handle_event(event) and not coord.is_rolling:
+            if (is_human_turn and not adapter.showing_history and not adapter.showing_help
+                    and adapter.confirm_zero_category is None
+                    and self.roll_button.handle_event(event) and not coord.is_rolling):
                 adapter.do_roll()
 
             # Handle play again button (only when game is over)
@@ -689,7 +701,7 @@ class YahtzeeGame:
                     self.animation_dice_values[i] = random.randint(1, 6)
 
         # Tick the coordinator and update adapter state (sounds, flash, game over)
-        events = self.adapter.update()
+        self.adapter.update()
 
         # After tick, if rolling just finished, sync animation values to final
         if not coord.is_rolling:
@@ -727,7 +739,9 @@ class YahtzeeGame:
             pygame.draw.rect(self.screen, flash_color, cat_rect, border_radius=5)
         elif coord.ai_showing_score_choice and cat == coord.ai_score_choice_category:
             pygame.draw.rect(self.screen, self._ai_choice_highlight(), cat_rect, border_radius=5)
-        elif not scorecard.is_filled(cat) and (self.hovered_category == cat or (self.kb_selected_index is not None and CATEGORY_ORDER[self.kb_selected_index] == cat)):
+        elif not scorecard.is_filled(cat) and (
+                self.hovered_category == cat
+                or (self.kb_selected_index is not None and CATEGORY_ORDER[self.kb_selected_index] == cat)):
             pygame.draw.rect(self.screen, self._hover_color(), cat_rect, border_radius=5)
 
         name_text = font.render(cat.value, True, self._text_color())
@@ -1313,7 +1327,6 @@ class YahtzeeGame:
         entry_font = self._font(24)
         row_y = header_y + 35
 
-        text_color = self._text_color()
         if not entries:
             no_data = entry_font.render("No scores recorded yet.", True, self._gray_color())
             no_rect = no_data.get_rect(center=(WINDOW_WIDTH // 2, row_y + 40))
@@ -1510,7 +1523,9 @@ class YahtzeeGame:
 
             # Player prefix for multiplayer
             if coord.multiplayer:
-                pname = coord.player_configs[entry.player_index][0] if entry.player_index < len(coord.player_configs) else f"P{entry.player_index}"
+                pname = (coord.player_configs[entry.player_index][0]
+                        if entry.player_index < len(coord.player_configs)
+                        else f"P{entry.player_index}")
                 line = f"T{entry.turn} {pname}: {dice_str} → {cat_name}: {score_val}"
             else:
                 line = f"Turn {entry.turn}: {dice_str} → {cat_name}: {score_val}"

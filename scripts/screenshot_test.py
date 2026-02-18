@@ -380,13 +380,13 @@ def run_tests():
     print(f"Results: {passed} passed, {failed} failed out of {passed + failed}")
 
     if errors:
-        print(f"\nFailures:")
+        print("\nFailures:")
         for label, e in errors:
             print(f"  [{label}] {e}")
         print(f"\nScreenshots saved to {SHOTS_DIR}/")
         sys.exit(1)
     else:
-        print(f"All screenshots and DOM checks passed!")
+        print("All screenshots and DOM checks passed!")
         print(f"Screenshots saved to {SHOTS_DIR}/")
 
 

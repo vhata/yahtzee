@@ -10,25 +10,26 @@ Conventions match existing test files:
 - random.seed() for determinism
 - No mocking — exercises real game engine
 """
-import pytest
 import random
-from dataclasses import replace
 
-from game_engine import (
-    Category, GameState, DieState, Scorecard,
-    MultiplayerGameState,
-    mp_get_current_scorecard,
-)
+import pytest
+
 from ai import (
-    RollAction, ScoreAction,
-    RandomStrategy, GreedyStrategy, ExpectedValueStrategy, OptimalStrategy,
+    ExpectedValueStrategy,
+    GreedyStrategy,
+    OptimalStrategy,
+    RandomStrategy,
     play_game,
 )
 from game_coordinator import (
-    GameCoordinator, parse_args, _make_strategy,
-    SPEED_PRESETS, SPEED_NAMES,
+    SPEED_PRESETS,
+    GameCoordinator,
+    _make_strategy,
+    parse_args,
 )
-
+from game_engine import (
+    Category,
+)
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1026,8 +1027,9 @@ class TestIntegration:
 #    Verify that YahtzeeGame.draw() doesn't crash in headless pygame.
 # ═══════════════════════════════════════════════════════════════════════════════
 
-import os
-import pygame
+import os  # noqa: E402
+
+import pygame  # noqa: E402
 
 
 @pytest.fixture(scope="module", autouse=False)

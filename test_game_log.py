@@ -10,11 +10,9 @@ Sections:
     4. Ordering — multiple turns stay in order
     5. Multiplayer — entries with different player_index
 """
-import pytest
 
 from game_engine import Category
-from game_log import GameLog, LogEntry
-
+from game_log import GameLog
 
 # ── 1. Individual logging ────────────────────────────────────────────────────
 

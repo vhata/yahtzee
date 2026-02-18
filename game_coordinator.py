@@ -4,28 +4,49 @@ GameCoordinator — All non-pygame game coordination logic.
 Owns game state, timers, AI pacing, and the per-frame state machine.
 The GUI layer (main.py) delegates to this and only handles rendering + events.
 """
+from __future__ import annotations
+
 import argparse
 import json
 import os
-import sys
 import tempfile
 from pathlib import Path
 
-from game_engine import (
-    Category, Scorecard, calculate_score,
-    GameState, DieState,
-    roll_dice as engine_roll_dice,
-    toggle_die_hold as engine_toggle_die,
-    select_category as engine_select_category,
-    can_roll, can_select_category,
-    reset_game as engine_reset_game,
-    MultiplayerGameState,
-    mp_roll_dice, mp_toggle_die_hold, mp_select_category,
-    mp_can_roll, mp_can_select_category, mp_get_current_scorecard,
-)
 from ai import (
-    RollAction, ScoreAction,
-    RandomStrategy, GreedyStrategy, ExpectedValueStrategy, OptimalStrategy,
+    ExpectedValueStrategy,
+    GreedyStrategy,
+    OptimalStrategy,
+    RandomStrategy,
+    RollAction,
+    ScoreAction,
+    YahtzeeStrategy,
+)
+from game_engine import (
+    Category,
+    DieState,
+    GameState,
+    MultiplayerGameState,
+    Scorecard,
+    can_roll,
+    can_select_category,
+    mp_can_roll,
+    mp_can_select_category,
+    mp_get_current_scorecard,
+    mp_roll_dice,
+    mp_select_category,
+    mp_toggle_die_hold,
+)
+from game_engine import (
+    reset_game as engine_reset_game,
+)
+from game_engine import (
+    roll_dice as engine_roll_dice,
+)
+from game_engine import (
+    select_category as engine_select_category,
+)
+from game_engine import (
+    toggle_die_hold as engine_toggle_die,
 )
 from game_log import GameLog
 
@@ -45,7 +66,7 @@ class GameCoordinator:
     coordinator action methods in response to user input.
     """
 
-    def __init__(self, ai_strategy=None, speed="normal", players=None):
+    def __init__(self, ai_strategy=None, speed: str = "normal", players: list | None = None) -> None:
         """Initialize the coordinator.
 
         Args:
@@ -104,34 +125,34 @@ class GameCoordinator:
     # ── Properties (uniform interface for single/multiplayer) ─────────────
 
     @property
-    def dice(self):
+    def dice(self) -> tuple[DieState, ...]:
         """Current dice tuple from the active game state."""
         return self.mp_state.dice if self.multiplayer else self.state.dice
 
     @property
-    def rolls_used(self):
+    def rolls_used(self) -> int:
         """Current rolls_used from the active game state."""
         return self.mp_state.rolls_used if self.multiplayer else self.state.rolls_used
 
     @property
-    def game_over(self):
+    def game_over(self) -> bool:
         """Whether the game is over."""
         return self.mp_state.game_over if self.multiplayer else self.state.game_over
 
     @property
-    def current_round(self):
+    def current_round(self) -> int:
         """Current round number (1-13)."""
         return self.mp_state.current_round if self.multiplayer else self.state.current_round
 
     @property
-    def scorecard(self):
+    def scorecard(self) -> Scorecard:
         """Current player's scorecard."""
         if self.multiplayer:
             return mp_get_current_scorecard(self.mp_state)
         return self.state.scorecard
 
     @property
-    def is_current_player_human(self):
+    def is_current_player_human(self) -> bool:
         """Whether the current player is human."""
         if not self.multiplayer:
             return self.ai_strategy is None
@@ -139,7 +160,7 @@ class GameCoordinator:
         return strategy is None
 
     @property
-    def current_ai_strategy(self):
+    def current_ai_strategy(self) -> YahtzeeStrategy | None:
         """Current player's AI strategy (or None if human)."""
         if not self.multiplayer:
             return self.ai_strategy
@@ -147,35 +168,35 @@ class GameCoordinator:
         return strategy
 
     @property
-    def has_any_ai(self):
+    def has_any_ai(self) -> bool:
         """Whether any player is AI (for speed control display)."""
         if self.multiplayer:
             return any(s is not None for _, s in self.player_configs)
         return self.ai_strategy is not None
 
     @property
-    def current_player_index(self):
+    def current_player_index(self) -> int:
         """Current player index (multiplayer) or 0 (single-player)."""
         if self.multiplayer:
             return self.mp_state.current_player_index
         return 0
 
     @property
-    def all_scorecards(self):
+    def all_scorecards(self) -> tuple[Scorecard, ...]:
         """Tuple of all scorecards (multiplayer) or single-element tuple (single-player)."""
         if self.multiplayer:
             return self.mp_state.scorecards
         return (self.state.scorecard,)
 
     @property
-    def num_players(self):
+    def num_players(self) -> int:
         """Number of players."""
         if self.multiplayer:
             return self.mp_state.num_players
         return 1
 
     @property
-    def can_roll_now(self):
+    def can_roll_now(self) -> bool:
         """Whether dice can be rolled right now."""
         if self.is_rolling:
             return False
@@ -185,7 +206,7 @@ class GameCoordinator:
 
     # ── Undo ──────────────────────────────────────────────────────────────
 
-    def _push_undo(self):
+    def _push_undo(self) -> None:
         """Save a snapshot before a human action. Only pushes for human turns."""
         if not self.is_current_player_human:
             return
@@ -208,7 +229,7 @@ class GameCoordinator:
         }
         self._undo_stack.append(snapshot)
 
-    def undo(self):
+    def undo(self) -> bool:
         """Undo the last human action. Returns True if successful, False otherwise.
 
         Blocked when: stack empty, AI turn, rolling, turn transition, game over.
@@ -243,7 +264,7 @@ class GameCoordinator:
         return True
 
     @property
-    def can_undo(self):
+    def can_undo(self) -> bool:
         """Whether undo is available right now."""
         if not self._undo_stack:
             return False
@@ -255,7 +276,7 @@ class GameCoordinator:
 
     # ── Action methods (called by GUI on input) ──────────────────────────
 
-    def roll_dice(self):
+    def roll_dice(self) -> None:
         """Start a dice roll. Sets is_rolling=True and computes pending state.
 
         The roll completes after roll_duration ticks (committed during tick()).
@@ -277,7 +298,7 @@ class GameCoordinator:
                 self.final_values = [die.value for die in new_state.dice]
                 self._pending_state = new_state
 
-    def toggle_hold(self, die_index):
+    def toggle_hold(self, die_index: int) -> None:
         """Toggle hold on a die (for human players)."""
         self._push_undo()
         if self.multiplayer:
@@ -285,7 +306,7 @@ class GameCoordinator:
         else:
             self.state = engine_toggle_die(self.state, die_index)
 
-    def select_category(self, category):
+    def select_category(self, category: Category) -> bool:
         """Score a category (for human players)."""
         if self.multiplayer:
             if mp_can_select_category(self.mp_state, category):
@@ -319,14 +340,14 @@ class GameCoordinator:
                 return True
         return False
 
-    def _autosave_if_active(self):
+    def _autosave_if_active(self) -> None:
         """Save state after scoring, or clear autosave if game is over."""
         if self.game_over:
             self.clear_autosave()
         else:
             self.save_state()
 
-    def reset_game(self):
+    def reset_game(self) -> None:
         """Reset to start a new game, preserving speed settings."""
         self.clear_autosave()
         if self.multiplayer:
@@ -350,7 +371,7 @@ class GameCoordinator:
         self.ai_score_choice_timer = 0
         self.game_log.clear()
 
-    def change_speed(self, direction):
+    def change_speed(self, direction: int) -> bool:
         """Change AI speed. direction=+1 for faster, -1 for slower.
 
         Returns True if speed actually changed, False if already at limit.
@@ -365,7 +386,7 @@ class GameCoordinator:
 
     # ── Frame update ─────────────────────────────────────────────────────
 
-    def tick(self):
+    def tick(self) -> None:
         """Advance one frame of the state machine.
 
         Handles: turn transitions, roll timer, AI hold-show pause, AI decisions.
@@ -492,7 +513,7 @@ class GameCoordinator:
 
     # ── Internal ─────────────────────────────────────────────────────────
 
-    def _on_turn_scored(self):
+    def _on_turn_scored(self) -> None:
         """Called after any player (human or AI) scores in multiplayer.
         Triggers turn transition and resets AI state for the next player.
         Clears undo stack so players can't undo across turn boundaries."""
@@ -515,12 +536,12 @@ class GameCoordinator:
     # ── Autosave ──────────────────────────────────────────────────────────
 
     @staticmethod
-    def _default_autosave_path():
+    def _default_autosave_path() -> Path:
         """Return the default path for the autosave file."""
         return Path.home() / ".yahtzee_autosave.json"
 
     @staticmethod
-    def _strategy_to_token(strategy):
+    def _strategy_to_token(strategy: YahtzeeStrategy | None) -> str:
         """Convert a strategy instance to a CLI token string."""
         if strategy is None:
             return "human"
@@ -528,7 +549,7 @@ class GameCoordinator:
         return name
 
     @staticmethod
-    def _scorecard_to_dict(scorecard):
+    def _scorecard_to_dict(scorecard: Scorecard) -> dict:
         """Serialize a Scorecard to a JSON-safe dict."""
         return {
             "scores": {cat.value: score for cat, score in scorecard.scores.items() if score is not None},
@@ -536,7 +557,7 @@ class GameCoordinator:
         }
 
     @staticmethod
-    def _dict_to_scorecard(data):
+    def _dict_to_scorecard(data: dict) -> Scorecard:
         """Deserialize a dict back to a Scorecard."""
         sc = Scorecard()
         cat_by_name = {cat.value: cat for cat in Category}
@@ -547,7 +568,7 @@ class GameCoordinator:
         sc.yahtzee_bonus_count = data.get("yahtzee_bonus_count", 0)
         return sc
 
-    def save_state(self, path=None):
+    def save_state(self, path: str | Path | None = None) -> None:
         """Serialize current game state to JSON for autosave.
 
         Writes to ~/.yahtzee_autosave.json. Skipped if game is over or
@@ -600,7 +621,7 @@ class GameCoordinator:
             pass  # Silently fail — autosave is best-effort
 
     @classmethod
-    def load_state(cls, path=None):
+    def load_state(cls, path: str | Path | None = None) -> GameCoordinator | None:
         """Load autosave and return a configured GameCoordinator, or None.
 
         Deletes the autosave file after successful load. Returns None if
@@ -678,7 +699,7 @@ class GameCoordinator:
             return None
 
     @staticmethod
-    def clear_autosave(path=None):
+    def clear_autosave(path: str | Path | None = None) -> None:
         """Delete the autosave file."""
         if path is None:
             path = GameCoordinator._default_autosave_path()
@@ -689,7 +710,7 @@ class GameCoordinator:
             pass
 
 
-def _make_strategy(token):
+def _make_strategy(token: str) -> YahtzeeStrategy | None:
     """Create a strategy instance from a CLI token, or None for 'human'.
 
     Returns None for unrecognized tokens (treated as human player).
@@ -709,7 +730,7 @@ def _make_strategy(token):
     return None
 
 
-def parse_args(argv=None):
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments.
 
     Args:

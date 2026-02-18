@@ -6,20 +6,28 @@ Tests:
        strategies never make illegal moves
     2. Quality — greedy > random, EV > greedy, determinism
 """
-import pytest
 import random
 
-from game_engine import (
-    Category, GameState, DieState, Scorecard,
-    roll_dice, can_roll, can_select_category, calculate_score,
-)
-from ai import (
-    RollAction, ScoreAction,
-    YahtzeeStrategy, RandomStrategy, GreedyStrategy, ExpectedValueStrategy,
-    OptimalStrategy,
-    play_turn, play_game,
-)
+import pytest
 
+from ai import (
+    ExpectedValueStrategy,
+    GreedyStrategy,
+    OptimalStrategy,
+    RandomStrategy,
+    RollAction,
+    ScoreAction,
+    play_game,
+)
+from game_engine import (
+    Category,
+    DieState,
+    GameState,
+    Scorecard,
+    can_roll,
+    can_select_category,
+    roll_dice,
+)
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -399,7 +407,6 @@ class TestEVAdjustedScoring:
                           current_round=13, game_over=False)
 
         adj = ev._adjusted_score_for_dice(state, Category.CHANCE, dice)
-        raw = 20.0  # 2+3+4+5+6
         # Should be a positive score — no penalty since Chance always scores
         assert adj > 0
 

@@ -8,11 +8,8 @@ Sections:
     2. Save — round-trip, bad path
 """
 import json
-import pytest
-from pathlib import Path
 
-from settings import load_settings, save_settings, DEFAULTS
-
+from settings import DEFAULTS, load_settings, save_settings
 
 # ── 1. Load ──────────────────────────────────────────────────────────────────
 

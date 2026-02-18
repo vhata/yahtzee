@@ -20,7 +20,6 @@ from collections import Counter
 
 from game_engine import Category, DieState, calculate_score
 
-
 # ── ALL_COMBOS: 252 distinct unordered 5-dice outcomes ───────────────────────
 
 ALL_COMBOS = list(itertools.combinations_with_replacement(range(1, 7), 5))

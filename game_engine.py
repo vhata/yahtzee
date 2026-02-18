@@ -4,11 +4,10 @@ Yahtzee Game Engine - Pure game logic without GUI dependencies
 This module contains all the core game logic for Yahtzee, with no pygame dependencies.
 It uses immutable data structures and pure functions to enable unit testing without a GUI.
 """
-from dataclasses import dataclass, replace
-from typing import Tuple
-from enum import Enum
-from collections import Counter
 import random
+from collections import Counter
+from dataclasses import dataclass, replace
+from enum import Enum
 
 
 class Category(Enum):
@@ -337,7 +336,7 @@ class DieState:
 @dataclass(frozen=True)
 class GameState:
     """Immutable game state - represents complete game state at a point in time"""
-    dice: Tuple[DieState, ...]  # 5 dice (tuple for immutability)
+    dice: tuple[DieState, ...]  # 5 dice (tuple for immutability)
     scorecard: Scorecard
     rolls_used: int  # 0-3
     current_round: int  # 1-13
@@ -501,9 +500,9 @@ class MultiplayerGameState:
     Reuses existing single-player engine functions internally to avoid logic duplication.
     """
     num_players: int
-    scorecards: Tuple[Scorecard, ...]  # one per player
+    scorecards: tuple[Scorecard, ...]  # one per player
     current_player_index: int
-    dice: Tuple[DieState, ...]
+    dice: tuple[DieState, ...]
     rolls_used: int
     current_round: int       # 1-13, advances when all players complete a turn
     game_over: bool = False

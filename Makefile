@@ -1,4 +1,4 @@
-.PHONY: play play-tui play-web test test-all bench clean setup coverage
+.PHONY: play play-tui play-web test test-all bench clean setup coverage lint format check
 
 play:
 	uv run python main.py
@@ -30,6 +30,15 @@ setup-web: setup
 setup-all:
 	uv sync --extra dev
 	uv pip install "textual>=0.50.0" "flask>=3.0.0" "flask-sock>=0.7.0"
+
+lint:
+	uv run ruff check .
+
+format:
+	uv run ruff format .
+
+check:
+	uv run ruff check . && uv run ruff format --check .
 
 coverage:
 	uv run pytest -m "not slow" --cov --cov-report=term-missing --cov-report=html

@@ -11,21 +11,17 @@ Covers:
     4. Unique holds — sub-multiset enumeration
     5. Category EVs — expected values for dedicated 3-roll turns
 """
-import pytest
-import math
-
-from game_engine import Category
 
 from dice_tables import (
     ALL_COMBOS,
-    COMBO_TO_INDEX,
+    CATEGORY_EV,
     COMBO_PROBS,
+    COMBO_TO_INDEX,
     SCORE_TABLE,
     TRANSITIONS,
-    CATEGORY_EV,
     unique_holds,
 )
-
+from game_engine import Category
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. COMBO ENUMERATION

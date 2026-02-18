@@ -15,22 +15,37 @@ Sections:
     7. Scorecard — upper/lower sections, bonus, grand total
     8. Game Flow — full game, round progression, game over
 """
-import pytest
 import random
 from dataclasses import replace
 
-from game_engine import (
-    DieState, GameState, Category, Scorecard,
-    roll_dice, toggle_die_hold, select_category,
-    can_roll, can_select_category, reset_game,
-    calculate_score, calculate_score_in_context,
-    has_yahtzee, has_full_house,
-    has_small_straight, has_large_straight, has_n_of_kind,
-    MultiplayerGameState,
-    mp_roll_dice, mp_toggle_die_hold, mp_select_category,
-    mp_can_roll, mp_can_select_category, mp_get_current_scorecard,
-)
+import pytest
 
+from game_engine import (
+    Category,
+    DieState,
+    GameState,
+    MultiplayerGameState,
+    Scorecard,
+    calculate_score,
+    calculate_score_in_context,
+    can_roll,
+    can_select_category,
+    has_full_house,
+    has_large_straight,
+    has_n_of_kind,
+    has_small_straight,
+    has_yahtzee,
+    mp_can_roll,
+    mp_can_select_category,
+    mp_get_current_scorecard,
+    mp_roll_dice,
+    mp_select_category,
+    mp_toggle_die_hold,
+    reset_game,
+    roll_dice,
+    select_category,
+    toggle_die_hold,
+)
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -103,7 +118,7 @@ class TestDieState:
 
     def test_toggle_held_returns_new_instance(self):
         die = DieState(value=4, held=False)
-        toggled = die.toggle_held()
+        die.toggle_held()
         assert die.held is False  # original unchanged
 
 

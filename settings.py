@@ -3,6 +3,7 @@
 Stores user preferences in ~/.yahtzee_settings.json.
 No pygame dependency — follows the same pattern as score_history.py.
 """
+from __future__ import annotations
 
 import json
 import os
@@ -17,12 +18,12 @@ DEFAULTS = {
 }
 
 
-def _default_path():
+def _default_path() -> Path:
     """Return the default path for the settings file."""
     return Path.home() / ".yahtzee_settings.json"
 
 
-def load_settings(path=None):
+def load_settings(path: str | Path | None = None) -> dict:
     """Load settings from JSON file. Returns DEFAULTS on missing/corrupt.
 
     Merges with DEFAULTS so missing keys get default values.
@@ -45,7 +46,7 @@ def load_settings(path=None):
         return dict(DEFAULTS)
 
 
-def save_settings(settings, path=None):
+def save_settings(settings: dict, path: str | Path | None = None) -> None:
     """Write settings dict to JSON atomically. Silently ignores write errors.
 
     Uses temp file + os.replace() so a crash mid-write can't corrupt

@@ -8,13 +8,16 @@ from pathlib import Path
 
 import pytest
 
-from game_engine import Category, GameState, DieState, Scorecard
-from game_coordinator import GameCoordinator
 from frontend_adapter import (
-    FrontendAdapter, NullSound, SoundInterface,
-    CATEGORY_ORDER, CATEGORY_TOOLTIPS, OPTIMAL_EXPECTED_TOTAL,
+    CATEGORY_ORDER,
+    CATEGORY_TOOLTIPS,
+    OPTIMAL_EXPECTED_TOTAL,
+    FrontendAdapter,
+    NullSound,
+    SoundInterface,
 )
-
+from game_coordinator import GameCoordinator
+from game_engine import Category
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -286,7 +289,7 @@ class TestSettings:
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
             path = Path(f.name)
         try:
-            from settings import save_settings, load_settings
+            from settings import load_settings, save_settings
             adapter = _make_adapter()
             adapter.colorblind_mode = True
             adapter.dark_mode = True

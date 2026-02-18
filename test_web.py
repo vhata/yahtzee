@@ -1,12 +1,10 @@
 """Tests for web.py — action dispatch and category lookup."""
 
-import pytest
 
-from game_engine import Category
-from game_coordinator import GameCoordinator
 from frontend_adapter import FrontendAdapter, NullSound
-from web import _handle_action, _category_by_name
-
+from game_coordinator import GameCoordinator
+from game_engine import Category
+from web import _category_by_name, _handle_action
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 

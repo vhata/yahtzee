@@ -10,18 +10,16 @@ Sections:
     4. Multiplayer — multi-player score recording
     5. Entry Shape — required fields present on each entry
 """
+
 import pytest
-import json
-from pathlib import Path
 
 from score_history import (
-    record_score,
-    record_multiplayer_scores,
-    get_high_scores,
-    get_all_scores,
     MAX_ENTRIES,
+    get_all_scores,
+    get_high_scores,
+    record_multiplayer_scores,
+    record_score,
 )
-
 
 # ── 1. Recording & Retrieval ────────────────────────────────────────────────
 
@@ -147,7 +145,7 @@ def test_entry_has_date(tmp_path):
 
 # ── 6. Recent Scores ──────────────────────────────────────────────────────
 
-from score_history import get_recent_scores, get_recent_scores_filtered
+from score_history import get_recent_scores, get_recent_scores_filtered  # noqa: E402
 
 
 def test_recent_scores_newest_first(tmp_path):

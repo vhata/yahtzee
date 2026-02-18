@@ -21,6 +21,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --extra dev
+      - run: uv run ruff check .
       - run: sudo apt-get update && sudo apt-get install -y libsdl2-2.0-0 libsdl2-mixer-2.0-0
       - run: uv run pytest -v -m "not slow" --cov --cov-report=term-missing
       - run: uv run pytest -v -m slow

@@ -7,27 +7,29 @@ Contains:
 - play_turn() and play_game() game loop functions
 - RandomStrategy, GreedyStrategy, ExpectedValueStrategy, OptimalStrategy
 """
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, replace
-from typing import Tuple, Union
 import random
-
+from abc import ABC, abstractmethod
 from collections import Counter
+from dataclasses import dataclass
 
 from game_engine import (
-    Category, GameState, DieState, Scorecard,
-    roll_dice, toggle_die_hold, select_category,
-    can_roll, can_select_category, calculate_score,
+    Category,
+    DieState,
+    GameState,
     calculate_score_in_context,
+    can_roll,
+    can_select_category,
+    roll_dice,
+    select_category,
+    toggle_die_hold,
 )
-
 
 # ── Action Types ────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class RollAction:
     """Hold specific dice and re-roll the rest."""
-    hold: Tuple[int, ...]  # dice indices (0-4) to hold; rest get rolled
+    hold: tuple[int, ...]  # dice indices (0-4) to hold; rest get rolled
     reason: str = ""
 
 
@@ -44,7 +46,7 @@ class YahtzeeStrategy(ABC):
     """Abstract base class for Yahtzee AI strategies."""
 
     @abstractmethod
-    def choose_action(self, state: GameState) -> Union[RollAction, ScoreAction]:
+    def choose_action(self, state: GameState) -> RollAction | ScoreAction:
         """Given state (after at least 1 roll), decide: roll again or score.
 
         Args:
@@ -58,7 +60,7 @@ class YahtzeeStrategy(ABC):
 
 # ── Game Loop ───────────────────────────────────────────────────────────────
 
-def _apply_holds(state: GameState, hold_indices: Tuple[int, ...]) -> GameState:
+def _apply_holds(state: GameState, hold_indices: tuple[int, ...]) -> GameState:
     """Set hold status on dice: hold those in hold_indices, unhold the rest.
 
     This ensures the dice hold state matches exactly what the strategy requested,
@@ -128,7 +130,7 @@ class RandomStrategy(YahtzeeStrategy):
     random unfilled category chosen when scoring.
     """
 
-    def choose_action(self, state: GameState) -> Union[RollAction, ScoreAction]:
+    def choose_action(self, state: GameState) -> RollAction | ScoreAction:
         # If we've used all 3 rolls, must score
         if state.rolls_used >= 3:
             return self._random_score(state)
@@ -176,7 +178,7 @@ class GreedyStrategy(YahtzeeStrategy):
       or holds partial straights
     """
 
-    def choose_action(self, state: GameState) -> Union[RollAction, ScoreAction]:
+    def choose_action(self, state: GameState) -> RollAction | ScoreAction:
         if state.rolls_used >= 3:
             return self._best_score(state)
 
@@ -189,7 +191,7 @@ class GreedyStrategy(YahtzeeStrategy):
         hold, hold_reason = self._choose_holds(state)
         return RollAction(hold=hold, reason=hold_reason)
 
-    def _check_good_scores(self, state: GameState) -> Union[ScoreAction, None]:
+    def _check_good_scores(self, state: GameState) -> ScoreAction | None:
         """Check if any unfilled category has a score worth taking immediately."""
         available = [cat for cat in Category if not state.scorecard.is_filled(cat)]
 
@@ -320,7 +322,7 @@ class GreedyStrategy(YahtzeeStrategy):
 
 # ── Shared upper section targets (used by EV and Optimal strategies) ───────
 
-from dice_tables import CATEGORY_EV
+from dice_tables import CATEGORY_EV  # noqa: E402
 
 _UPPER_TARGETS = {
     Category.ONES: 3, Category.TWOS: 6, Category.THREES: 9,
@@ -343,7 +345,7 @@ class ExpectedValueStrategy(YahtzeeStrategy):
     def __init__(self, num_simulations: int = 200):
         self.num_simulations = num_simulations
 
-    def choose_action(self, state: GameState) -> Union[RollAction, ScoreAction]:
+    def choose_action(self, state: GameState) -> RollAction | ScoreAction:
         if state.rolls_used >= 3:
             best_cat = self._best_category(state)
             score = calculate_score_in_context(best_cat, state.dice, state.scorecard)
@@ -384,18 +386,17 @@ class ExpectedValueStrategy(YahtzeeStrategy):
             held_values = sorted([state.dice[i].value for i in best_hold])
             return RollAction(
                 hold=best_hold,
-                reason=f"Holding {held_values} and rolling (EV: {best_hold_ev:.1f} vs scoring now: {best_now_score:.1f})")
+                reason=f"Holding {held_values} and rolling "
+                       f"(EV: {best_hold_ev:.1f} vs scoring now: {best_now_score:.1f})")
 
-    def _simulate_hold(self, state: GameState, hold: Tuple[int, ...],
+    def _simulate_hold(self, state: GameState, hold: tuple[int, ...],
                        available: list) -> float:
         """Simulate N re-rolls with given hold and return average best score."""
         total = 0.0
-        held_values = [state.dice[i].value for i in hold]
         num_reroll = 5 - len(hold)
 
         for _ in range(self.num_simulations):
             # Generate random values for non-held dice
-            new_values = list(held_values)
             rerolled = [random.randint(1, 6) for _ in range(num_reroll)]
 
             # Reconstruct full dice tuple in correct order
@@ -477,7 +478,7 @@ class ExpectedValueStrategy(YahtzeeStrategy):
         return raw_score + adjustment
 
     def _adjusted_score_for_dice(self, state: GameState, cat: Category,
-                                  dice: Tuple[DieState, ...]) -> float:
+                                  dice: tuple[DieState, ...]) -> float:
         """Calculate adjusted score using opportunity cost and bonus probability.
 
         Uses the same principled model as OptimalStrategy:
@@ -523,9 +524,11 @@ class ExpectedValueStrategy(YahtzeeStrategy):
 
 # ── OptimalStrategy ───────────────────────────────────────────────────────────
 
-from dice_tables import (
-    ALL_COMBOS, COMBO_TO_INDEX, COMBO_PROBS,
-    SCORE_TABLE, TRANSITIONS,
+from dice_tables import (  # noqa: E402
+    ALL_COMBOS,
+    COMBO_TO_INDEX,
+    SCORE_TABLE,
+    TRANSITIONS,
     unique_holds,
 )
 
@@ -549,7 +552,7 @@ class OptimalStrategy(YahtzeeStrategy):
     No randomness — purely deterministic given the same game state.
     """
 
-    def choose_action(self, state: GameState) -> Union[RollAction, ScoreAction]:
+    def choose_action(self, state: GameState) -> RollAction | ScoreAction:
         available = [cat for cat in Category if not state.scorecard.is_filled(cat)]
         available_indices = [_ALL_CATEGORIES.index(cat) for cat in available]
 
@@ -690,9 +693,6 @@ class OptimalStrategy(YahtzeeStrategy):
 
         # Upper bonus delta: how does scoring here affect bonus probability?
         if cat in _UPPER_CATS:
-            face = _UPPER_CATS[cat]
-            target = face * 3  # target contribution for this category
-
             upper_total = state.scorecard.get_upper_section_total()
             upper_filled = sum(1 for c in _UPPER_CATS if state.scorecard.is_filled(c))
             upper_remaining = 6 - upper_filled

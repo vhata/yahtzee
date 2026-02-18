@@ -5,40 +5,54 @@ Yahtzee Web — Flask + WebSocket server for browser-based play.
 Each WebSocket connection gets its own GameCoordinator instance.
 State is pushed to the client as JSON snapshots at ~30 FPS during active play.
 """
+from __future__ import annotations
+
 import json
 import logging
 import threading
 import time
-import sys
 
 logger = logging.getLogger(__name__)
 
-from flask import Flask, render_template, request
-from flask_sock import Sock
+from flask import Flask, render_template, request  # noqa: E402
+from flask_sock import Sock  # noqa: E402
 
-from game_engine import Category
-from game_coordinator import GameCoordinator, _make_strategy
-from frontend_adapter import FrontendAdapter, NullSound, CATEGORY_ORDER
+from frontend_adapter import FrontendAdapter, NullSound  # noqa: E402
+from game_coordinator import GameCoordinator, _make_strategy  # noqa: E402
+from game_engine import Category  # noqa: E402
 
 app = Flask(__name__)
 sock = Sock(app)
 
 
+@app.after_request
+def add_security_headers(response):
+    """Add Content-Security-Policy header for XSS defense-in-depth."""
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "connect-src 'self' ws: wss:; "
+        "img-src 'self'"
+    )
+    return response
+
+
 @app.route("/")
-def index():
+def index() -> str:
     """Landing page with game configuration form."""
     has_autosave = GameCoordinator.load_state() is not None
     return render_template("index.html", has_autosave=has_autosave)
 
 
 @app.route("/game")
-def game():
+def game() -> str:
     """Main game page — connects to WebSocket for real-time play."""
     return render_template("game.html")
 
 
 @sock.route("/ws")
-def websocket(ws):
+def websocket(ws) -> None:
     """WebSocket handler — one game per connection."""
     # Parse game config from query params
     ai = request.args.get("ai", "false") == "true"
@@ -127,7 +141,7 @@ def websocket(ws):
         running = False
 
 
-def _handle_action(adapter, action):
+def _handle_action(adapter: FrontendAdapter, action: dict) -> None:
     """Dispatch a client action to the adapter."""
     cmd = action.get("action", "")
 
@@ -203,7 +217,7 @@ def _handle_action(adapter, action):
         adapter.cycle_mode_filter()
 
 
-def _category_by_name(name):
+def _category_by_name(name: str) -> Category | None:
     """Look up a Category enum by its display name."""
     for cat in Category:
         if cat.value == name:
@@ -211,7 +225,7 @@ def _category_by_name(name):
     return None
 
 
-def main():
+def main() -> None:
     """Entry point for the web server."""
     import argparse
     parser = argparse.ArgumentParser(description="Yahtzee Web Server")

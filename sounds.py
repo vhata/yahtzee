@@ -4,16 +4,19 @@ SoundManager — Synthesized audio for Yahtzee using pure Python.
 Generates 16-bit PCM waveforms via struct.pack + math.sin (no numpy).
 All sounds are pre-generated at init for zero-latency playback.
 """
+from __future__ import annotations
+
 import math
 import struct
 
 import pygame
 
-
 SAMPLE_RATE = 44100
 
 
-def _generate_samples(duration_ms, freq=440.0, waveform="sine", volume=0.3, fade_out=True):
+def _generate_samples(
+    duration_ms: int, freq: float = 440.0, waveform: str = "sine", volume: float = 0.3, fade_out: bool = True,
+) -> bytes:
     """Generate raw 16-bit mono PCM bytes for a tone or noise burst.
 
     Args:
@@ -50,18 +53,18 @@ def _generate_samples(duration_ms, freq=440.0, waveform="sine", volume=0.3, fade
     return b"".join(samples)
 
 
-def _make_sound(pcm_bytes):
+def _make_sound(pcm_bytes: bytes) -> pygame.mixer.Sound:
     """Wrap raw PCM bytes in a pygame.mixer.Sound."""
     return pygame.mixer.Sound(buffer=pcm_bytes)
 
 
-def _two_note(freq1, freq2, note_ms=175, volume=0.25):
+def _two_note(freq1: float, freq2: float, note_ms: int = 175, volume: float = 0.25) -> bytes:
     """Generate a two-note chime (ascending)."""
     return _generate_samples(note_ms, freq1, "sine", volume) + \
            _generate_samples(note_ms, freq2, "sine", volume)
 
 
-def _three_note(freq1, freq2, freq3, note_ms=200, volume=0.25):
+def _three_note(freq1: float, freq2: float, freq3: float, note_ms: int = 200, volume: float = 0.25) -> bytes:
     """Generate a three-note fanfare (ascending)."""
     return _generate_samples(note_ms, freq1, "sine", volume) + \
            _generate_samples(note_ms, freq2, "sine", volume) + \
@@ -74,7 +77,7 @@ class SoundManager:
     All play methods are no-ops when disabled.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._enabled = True
 
         # Pre-generate all sounds
@@ -90,27 +93,27 @@ class SoundManager:
         # Game over fanfare: C5 → E5 → G5
         self._fanfare = _make_sound(_three_note(523.25, 659.25, 783.99, note_ms=200, volume=0.25))
 
-    def toggle(self):
+    def toggle(self) -> bool:
         """Toggle sound on/off. Returns new enabled state."""
         self._enabled = not self._enabled
         return self._enabled
 
     @property
-    def enabled(self):
+    def enabled(self) -> bool:
         return self._enabled
 
-    def play_roll(self):
+    def play_roll(self) -> None:
         if self._enabled:
             self._roll.play()
 
-    def play_click(self):
+    def play_click(self) -> None:
         if self._enabled:
             self._click.play()
 
-    def play_score(self):
+    def play_score(self) -> None:
         if self._enabled:
             self._score.play()
 
-    def play_fanfare(self):
+    def play_fanfare(self) -> None:
         if self._enabled:
             self._fanfare.play()

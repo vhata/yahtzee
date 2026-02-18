@@ -8,17 +8,23 @@ Each frontend (pygame, TUI, web) creates a FrontendAdapter wrapping a
 GameCoordinator and delegates UI-state logic here, keeping only rendering
 and input translation frontend-specific.
 """
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
-from game_engine import Category, calculate_score_in_context
 from dice_tables import CATEGORY_EV
+
+if TYPE_CHECKING:
+    from game_coordinator import GameCoordinator
+from game_engine import Category, calculate_score_in_context
 from score_history import (
-    record_score, record_multiplayer_scores,
-    get_high_scores, get_recent_scores_filtered,
+    get_high_scores,
+    get_recent_scores_filtered,
+    record_multiplayer_scores,
+    record_score,
 )
 from settings import load_settings, save_settings
-
 
 # ── Shared constants (moved from main.py) ────────────────────────────────────
 
@@ -55,19 +61,19 @@ class SoundInterface(ABC):
     """Abstract sound interface — each frontend provides its own implementation."""
 
     @abstractmethod
-    def play_roll(self): ...
+    def play_roll(self) -> None: ...
 
     @abstractmethod
-    def play_click(self): ...
+    def play_click(self) -> None: ...
 
     @abstractmethod
-    def play_score(self): ...
+    def play_score(self) -> None: ...
 
     @abstractmethod
-    def play_fanfare(self): ...
+    def play_fanfare(self) -> None: ...
 
     @abstractmethod
-    def toggle(self): ...
+    def toggle(self) -> bool: ...
 
     @property
     @abstractmethod
@@ -77,20 +83,20 @@ class SoundInterface(ABC):
 class NullSound(SoundInterface):
     """No-op sound for frontends without audio (TUI, server-side web)."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._enabled = False
 
-    def play_roll(self): pass
-    def play_click(self): pass
-    def play_score(self): pass
-    def play_fanfare(self): pass
+    def play_roll(self) -> None: pass
+    def play_click(self) -> None: pass
+    def play_score(self) -> None: pass
+    def play_fanfare(self) -> None: pass
 
-    def toggle(self):
+    def toggle(self) -> bool:
         self._enabled = not self._enabled
         return self._enabled
 
     @property
-    def enabled(self):
+    def enabled(self) -> bool:
         return self._enabled
 
 
@@ -103,7 +109,7 @@ class FrontendAdapter:
     keyboard navigation, score flash, settings, and score saving.
     """
 
-    def __init__(self, coordinator, sound=None):
+    def __init__(self, coordinator: GameCoordinator, sound: SoundInterface | None = None) -> None:
         self.coordinator = coordinator
         self.sound = sound or NullSound()
 
@@ -140,7 +146,7 @@ class FrontendAdapter:
 
     # ── Overlay management ────────────────────────────────────────────────
 
-    def toggle_help(self):
+    def toggle_help(self) -> None:
         """Toggle help overlay. Closes other overlays when opening."""
         if self.coordinator.is_rolling or self.coordinator.game_over:
             return
@@ -150,7 +156,7 @@ class FrontendAdapter:
             self.showing_replay = False
             self.kb_selected_index = None
 
-    def toggle_history(self):
+    def toggle_history(self) -> None:
         """Toggle history overlay. Closes other overlays when opening."""
         if self.coordinator.is_rolling or self.coordinator.game_over or self.showing_help:
             return
@@ -162,13 +168,13 @@ class FrontendAdapter:
             self.history_filter_player = "all"
             self.history_filter_mode = "all"
 
-    def toggle_replay(self):
+    def toggle_replay(self) -> None:
         """Toggle replay overlay (only available when game is over)."""
         if not self.coordinator.game_over:
             return
         self.showing_replay = not self.showing_replay
 
-    def close_top_overlay(self):
+    def close_top_overlay(self) -> bool:
         """Close the topmost overlay. Returns True if an overlay was closed."""
         if self.showing_help:
             self.showing_help = False
@@ -184,18 +190,18 @@ class FrontendAdapter:
         return False
 
     @property
-    def has_active_overlay(self):
+    def has_active_overlay(self) -> bool:
         """Whether any overlay is currently showing."""
         return self.showing_help or self.showing_history or self.showing_replay
 
     @property
-    def is_input_blocked(self):
+    def is_input_blocked(self) -> bool:
         """Whether game input should be blocked (overlay or confirm dialog)."""
         return self.has_active_overlay or self.confirm_zero_category is not None
 
     # ── Zero-score confirmation ───────────────────────────────────────────
 
-    def try_score_category(self, cat):
+    def try_score_category(self, cat: Category) -> bool:
         """Attempt to score a category. Shows confirm dialog if score is 0.
 
         Returns True if scoring happened immediately, False otherwise.
@@ -213,7 +219,7 @@ class FrontendAdapter:
             return True
         return False
 
-    def confirm_zero_yes(self):
+    def confirm_zero_yes(self) -> bool:
         """Confirm scoring 0 in the pending category. Returns True if scored."""
         cat = self.confirm_zero_category
         if cat is None:
@@ -225,13 +231,13 @@ class FrontendAdapter:
             return True
         return False
 
-    def confirm_zero_no(self):
+    def confirm_zero_no(self) -> None:
         """Cancel the zero-score confirmation."""
         self.confirm_zero_category = None
 
     # ── Keyboard category navigation ──────────────────────────────────────
 
-    def navigate_category(self, direction):
+    def navigate_category(self, direction: int) -> None:
         """Move keyboard selection to next/previous unfilled category.
 
         Args:
@@ -255,18 +261,18 @@ class FrontendAdapter:
 
         self.hovered_category = None
 
-    def set_hovered_category(self, cat):
+    def set_hovered_category(self, cat: Category) -> None:
         """Set mouse-hovered category (clears keyboard selection)."""
         self.hovered_category = cat
         self.kb_selected_index = None
 
-    def clear_hover(self):
+    def clear_hover(self) -> None:
         """Clear mouse hover state."""
         self.hovered_category = None
 
     # ── Settings ──────────────────────────────────────────────────────────
 
-    def load_settings(self):
+    def load_settings(self) -> None:
         """Load persisted settings and apply to adapter + coordinator."""
         settings = load_settings()
         self.colorblind_mode = settings.get("colorblind_mode", False)
@@ -280,7 +286,7 @@ class FrontendAdapter:
                 self.coordinator.ai_delay, self.coordinator.roll_duration, \
                     self.coordinator.ai_hold_show_duration = SPEED_PRESETS[saved_speed]
 
-    def _save_settings(self):
+    def _save_settings(self) -> None:
         """Persist current settings to disk."""
         save_settings({
             "colorblind_mode": self.colorblind_mode,
@@ -289,22 +295,22 @@ class FrontendAdapter:
             "dark_mode": self.dark_mode,
         })
 
-    def toggle_colorblind(self):
+    def toggle_colorblind(self) -> None:
         """Toggle colorblind mode and save."""
         self.colorblind_mode = not self.colorblind_mode
         self._save_settings()
 
-    def toggle_dark_mode(self):
+    def toggle_dark_mode(self) -> None:
         """Toggle dark mode and save."""
         self.dark_mode = not self.dark_mode
         self._save_settings()
 
-    def toggle_sound(self):
+    def toggle_sound(self) -> None:
         """Toggle sound and save."""
         self.sound.toggle()
         self._save_settings()
 
-    def change_speed(self, direction):
+    def change_speed(self, direction: int) -> bool:
         """Change AI speed. Returns True if speed changed."""
         if self.coordinator.change_speed(direction):
             self._save_settings()
@@ -313,7 +319,7 @@ class FrontendAdapter:
 
     # ── Game actions ──────────────────────────────────────────────────────
 
-    def do_roll(self):
+    def do_roll(self) -> bool:
         """Roll dice. Plays roll sound if roll started. Returns True if rolling."""
         self.coordinator.roll_dice()
         if self.coordinator.is_rolling:
@@ -321,16 +327,16 @@ class FrontendAdapter:
             return True
         return False
 
-    def do_hold(self, die_index):
+    def do_hold(self, die_index: int) -> None:
         """Toggle hold on a die. Plays click sound."""
         self.coordinator.toggle_hold(die_index)
         self.sound.play_click()
 
-    def do_undo(self):
+    def do_undo(self) -> bool:
         """Undo last action. Returns True if successful."""
         return self.coordinator.undo()
 
-    def do_reset(self):
+    def do_reset(self) -> None:
         """Reset game. Saves scores first if game was over."""
         self._save_scores()
         self.coordinator.reset_game()
@@ -342,7 +348,7 @@ class FrontendAdapter:
 
     # ── Per-frame update ──────────────────────────────────────────────────
 
-    def update(self):
+    def update(self) -> dict[str, bool]:
         """Consume coordinator signals, advance flash, handle game-over.
 
         Returns dict of events that occurred this frame:
@@ -406,7 +412,7 @@ class FrontendAdapter:
     # ── Score flash progress ──────────────────────────────────────────────
 
     @property
-    def score_flash_progress(self):
+    def score_flash_progress(self) -> float | None:
         """Return flash progress 0.0-1.0, or None if no flash active."""
         if self.score_flash_category is None:
             return None
@@ -414,14 +420,14 @@ class FrontendAdapter:
 
     # ── History filters ───────────────────────────────────────────────────
 
-    def cycle_player_filter(self):
+    def cycle_player_filter(self) -> None:
         """Cycle through player type filters for history overlay."""
         idx = self._player_filter_options.index(self.history_filter_player)
         self.history_filter_player = self._player_filter_options[
             (idx + 1) % len(self._player_filter_options)
         ]
 
-    def cycle_mode_filter(self):
+    def cycle_mode_filter(self) -> None:
         """Cycle through mode filters for history overlay."""
         idx = self._mode_filter_options.index(self.history_filter_mode)
         self.history_filter_mode = self._mode_filter_options[
@@ -430,7 +436,7 @@ class FrontendAdapter:
 
     # ── Data helpers ──────────────────────────────────────────────────────
 
-    def get_filtered_history(self, limit=20):
+    def get_filtered_history(self, limit: int = 20) -> list:
         """Return filtered score history entries."""
         p_filter = None if self.history_filter_player == "all" else self.history_filter_player
         m_filter = None if self.history_filter_mode == "all" else self.history_filter_mode
@@ -438,13 +444,13 @@ class FrontendAdapter:
             limit=limit, player_type=p_filter, mode=m_filter
         )
 
-    def get_high_scores(self, limit=5):
+    def get_high_scores(self, limit: int = 5) -> list:
         """Return top human high scores."""
         return get_high_scores(player_type="human", limit=limit)
 
     # ── Score saving ──────────────────────────────────────────────────────
 
-    def _save_scores(self):
+    def _save_scores(self) -> None:
         """Persist game results (idempotent — only saves once per game)."""
         if self._scores_saved:
             return
@@ -472,7 +478,7 @@ class FrontendAdapter:
 
     # ── Full state snapshot (for web frontend) ────────────────────────────
 
-    def get_game_snapshot(self):
+    def get_game_snapshot(self) -> dict:
         """Return a complete JSON-serializable dict of game + UI state.
 
         Used by the web frontend to push full state over WebSocket.
