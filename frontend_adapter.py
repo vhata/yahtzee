@@ -117,6 +117,7 @@ class FrontendAdapter:
         self.showing_help = False
         self.showing_history = False
         self.showing_replay = False
+        self.showing_scores = False
 
         # Zero-score confirmation
         self.confirm_zero_category = None
@@ -174,6 +175,19 @@ class FrontendAdapter:
             return
         self.showing_replay = not self.showing_replay
 
+    def toggle_scores(self) -> None:
+        """Toggle all-player scores overlay (multiplayer only, not during rolling/game-over)."""
+        if not self.coordinator.multiplayer:
+            return
+        if self.coordinator.is_rolling or self.coordinator.game_over:
+            return
+        self.showing_scores = not self.showing_scores
+        if self.showing_scores:
+            self.showing_help = False
+            self.showing_history = False
+            self.showing_replay = False
+            self.kb_selected_index = None
+
     def close_top_overlay(self) -> bool:
         """Close the topmost overlay. Returns True if an overlay was closed."""
         if self.showing_help:
@@ -181,6 +195,9 @@ class FrontendAdapter:
             return True
         if self.showing_replay:
             self.showing_replay = False
+            return True
+        if self.showing_scores:
+            self.showing_scores = False
             return True
         if self.showing_history:
             self.showing_history = False
@@ -192,7 +209,7 @@ class FrontendAdapter:
     @property
     def has_active_overlay(self) -> bool:
         """Whether any overlay is currently showing."""
-        return self.showing_help or self.showing_history or self.showing_replay
+        return self.showing_help or self.showing_history or self.showing_replay or self.showing_scores
 
     @property
     def is_input_blocked(self) -> bool:
@@ -343,6 +360,7 @@ class FrontendAdapter:
         self._game_over_sound_played = False
         self._scores_saved = False
         self.showing_replay = False
+        self.showing_scores = False
         self.confirm_zero_category = None
         self.kb_selected_index = None
 
@@ -610,6 +628,7 @@ class FrontendAdapter:
             "showing_help": self.showing_help,
             "showing_history": self.showing_history,
             "showing_replay": self.showing_replay,
+            "showing_scores": self.showing_scores,
             "confirm_zero_category": (self.confirm_zero_category.value
                                        if self.confirm_zero_category else None),
             "kb_selected_index": self.kb_selected_index,

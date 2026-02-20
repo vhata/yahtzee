@@ -473,6 +473,10 @@ class YahtzeeGame:
         return self.adapter.showing_replay
 
     @property
+    def showing_scores(self):
+        return self.adapter.showing_scores
+
+    @property
     def confirm_zero_category(self):
         return self.adapter.confirm_zero_category
 
@@ -607,6 +611,9 @@ class YahtzeeGame:
                 # History overlay (H key)
                 if event.key == pygame.K_h:
                     adapter.toggle_history()
+                # Scores overlay (S key, multiplayer only)
+                if event.key == pygame.K_s:
+                    adapter.toggle_scores()
                 # History filter cycling (P/M keys while overlay showing)
                 if adapter.showing_history:
                     if event.key == pygame.K_p:
@@ -637,7 +644,7 @@ class YahtzeeGame:
                         self.animation_dice_values = [die.value for die in coord.dice]
                 # Keyboard shortcuts for human players
                 if (is_human_turn and not game_over and not coord.is_rolling
-                        and not adapter.showing_history and not adapter.showing_help):
+                        and not adapter.has_active_overlay):
                     if event.key == pygame.K_SPACE:
                         adapter.do_roll()
                     elif pygame.K_1 <= event.key <= pygame.K_5:
@@ -654,7 +661,7 @@ class YahtzeeGame:
             elif event.type == pygame.MOUSEMOTION:
                 adapter.clear_hover()
                 adapter.kb_selected_index = None  # Mouse clears keyboard selection
-                if not game_over and is_human_turn and not adapter.showing_history and not adapter.showing_help:
+                if not game_over and is_human_turn and not adapter.has_active_overlay:
                     scorecard = coord.scorecard
                     for cat, rect in self.category_rects.items():
                         if rect.collidepoint(event.pos) and not scorecard.is_filled(cat):
@@ -663,7 +670,7 @@ class YahtzeeGame:
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if adapter.confirm_zero_category is not None:
                     continue  # Block mouse clicks while dialog showing
-                if event.button == 1 and is_human_turn and not adapter.showing_history and not adapter.showing_help:
+                if event.button == 1 and is_human_turn and not adapter.has_active_overlay:
                     clicked_category = False
                     for cat, rect in self.category_rects.items():
                         if rect.collidepoint(event.pos):
@@ -678,7 +685,7 @@ class YahtzeeGame:
                                 break
 
             # Handle button clicks (only if not currently rolling and human turn)
-            if (is_human_turn and not adapter.showing_history and not adapter.showing_help
+            if (is_human_turn and not adapter.has_active_overlay
                     and adapter.confirm_zero_category is None
                     and self.roll_button.handle_event(event) and not coord.is_rolling):
                 adapter.do_roll()
@@ -763,14 +770,23 @@ class YahtzeeGame:
         scorecard = coord.scorecard
         dice = coord.dice
 
-        # Scorecard position and dimensions
+        # Scorecard position and dimensions — multiplayer shifts down to clear
+        # the player bar (which ends at Y=162) and uses a taller panel + tighter
+        # rows to fit the extra player name header without overflowing the window.
         scorecard_x = 620
-        scorecard_y = 150
-        row_height = 28
+        if coord.multiplayer:
+            scorecard_y = 170
+            row_height = 26
+            panel_height = 550
+        else:
+            scorecard_y = 150
+            row_height = 28
+            panel_height = 520
+
         col_width = 180
 
         # Draw scorecard background panel
-        panel_rect = pygame.Rect(scorecard_x - 15, scorecard_y - 15, 360, 520)
+        panel_rect = pygame.Rect(scorecard_x - 15, scorecard_y - 15, 360, panel_height)
         pygame.draw.rect(self.screen, self._scorecard_bg(), panel_rect, border_radius=12)
         pygame.draw.rect(self.screen, self._scorecard_border(), panel_rect, width=2, border_radius=12)
 
@@ -839,7 +855,7 @@ class YahtzeeGame:
         self.screen.blit(total_text, (scorecard_x, y))
 
         # Tooltip for hovered/selected unfilled category
-        if not self.showing_history and not self.showing_help and not coord.game_over and coord.rolls_used > 0:
+        if not self.adapter.has_active_overlay and not coord.game_over and coord.rolls_used > 0:
             tooltip_cat = None
             if self.hovered_category is not None:
                 tooltip_cat = self.hovered_category
@@ -1095,37 +1111,28 @@ class YahtzeeGame:
                 self.screen.blit(hs_text, hs_text_rect)
                 stats_y += 22
 
-    def _draw_game_over_multiplayer(self):
-        """Draw multiplayer game over with full per-category scorecard grid."""
+    def _draw_scorecard_grid(self, grid_x, grid_y, row_height, show_optimal=False):
+        """Draw a full per-category scorecard grid for all players.
+
+        Shared helper used by both the game-over screen and the mid-game
+        scores overlay to avoid duplicating grid rendering logic.
+
+        Args:
+            grid_x: Left edge X of the grid.
+            grid_y: Top Y of the grid (player name headers start here).
+            row_height: Vertical spacing between rows.
+            show_optimal: If True, show "% Optimal" row for human players.
+        """
         coord = self.coordinator
         num = coord.num_players
         text_color = self._text_color()
         header_color = self._section_header_color()
 
-        # Game Over title
-        title_font = self._font(64)
-        title_text = title_font.render("GAME OVER!", True, text_color)
-        title_rect = title_text.get_rect(center=(WINDOW_WIDTH // 2, 45))
-        self.screen.blit(title_text, title_rect)
-
-        # Find winner
         totals = [coord.all_scorecards[i].get_grand_total() for i in range(num)]
         winner_idx = max(range(num), key=lambda i: totals[i])
-        winner_name = coord.player_configs[winner_idx][0]
-        winner_color = self._player_colors()[winner_idx % len(self._player_colors())]
 
-        winner_font = self._font(36)
-        winner_text = winner_font.render(f"{winner_name} wins!", True, winner_color)
-        winner_rect = winner_text.get_rect(center=(WINDOW_WIDTH // 2, 80))
-        self.screen.blit(winner_text, winner_rect)
-
-        # Grid layout
         label_col_width = 140
         player_col_width = min(130, (WINDOW_WIDTH - label_col_width - 80) // num)
-        grid_width = label_col_width + player_col_width * num
-        grid_x = (WINDOW_WIDTH - grid_width) // 2
-        row_height = 22
-        grid_y = 105
 
         cat_font = self._font(21)
         header_font = self._font(22)
@@ -1217,7 +1224,7 @@ class YahtzeeGame:
             val = totals[i]
             col_x = grid_x + label_col_width + i * player_col_width
             color = self._player_colors()[i % len(self._player_colors())]
-            is_winner = (i == winner_idx)
+            is_winner = (i == winner_idx) and coord.game_over
             text = total_font.render(str(val), True, color)
             rect = text.get_rect(centerx=col_x + player_col_width // 2, top=y)
             if is_winner:
@@ -1225,30 +1232,31 @@ class YahtzeeGame:
                 pygame.draw.rect(self.screen, self._winner_highlight(), highlight_rect, border_radius=4)
             self.screen.blit(text, rect)
 
-        # % of optimal for human players
-        any_human = any(s is None for _, s in coord.player_configs)
-        if any_human:
-            y += row_height
-            label = cat_font.render("% Optimal", True, text_color)
-            self.screen.blit(label, (grid_x + 8, y))
-            for i in range(num):
-                _, strategy = coord.player_configs[i]
-                if strategy is None:
-                    pct = totals[i] / OPTIMAL_EXPECTED_TOTAL * 100
-                    pct_str = f"{pct:.0f}%"
-                    if pct >= 100:
-                        color = self._valid_color()
-                    elif pct >= 70:
-                        color = header_color
+        # % of optimal for human players (game-over only)
+        if show_optimal:
+            any_human = any(s is None for _, s in coord.player_configs)
+            if any_human:
+                y += row_height
+                label = cat_font.render("% Optimal", True, text_color)
+                self.screen.blit(label, (grid_x + 8, y))
+                for i in range(num):
+                    _, strategy = coord.player_configs[i]
+                    if strategy is None:
+                        pct = totals[i] / OPTIMAL_EXPECTED_TOTAL * 100
+                        pct_str = f"{pct:.0f}%"
+                        if pct >= 100:
+                            color = self._valid_color()
+                        elif pct >= 70:
+                            color = header_color
+                        else:
+                            color = self._gray_color()
                     else:
+                        pct_str = ""
                         color = self._gray_color()
-                else:
-                    pct_str = ""
-                    color = self._gray_color()
-                col_x = grid_x + label_col_width + i * player_col_width
-                text = cat_font.render(pct_str, True, color)
-                rect = text.get_rect(centerx=col_x + player_col_width // 2, top=y)
-                self.screen.blit(text, rect)
+                    col_x = grid_x + label_col_width + i * player_col_width
+                    text = cat_font.render(pct_str, True, color)
+                    rect = text.get_rect(centerx=col_x + player_col_width // 2, top=y)
+                    self.screen.blit(text, rect)
 
         # Yahtzee bonus row (only if any player earned bonuses)
         any_bonuses = any(coord.all_scorecards[i].yahtzee_bonus_count > 0 for i in range(num))
@@ -1268,6 +1276,81 @@ class YahtzeeGame:
                 text = cat_font.render(bonus_str, True, color)
                 rect = text.get_rect(centerx=col_x + player_col_width // 2, top=y)
                 self.screen.blit(text, rect)
+
+    def _draw_game_over_multiplayer(self):
+        """Draw multiplayer game over with full per-category scorecard grid."""
+        coord = self.coordinator
+        text_color = self._text_color()
+
+        # Game Over title
+        title_font = self._font(64)
+        title_text = title_font.render("GAME OVER!", True, text_color)
+        title_rect = title_text.get_rect(center=(WINDOW_WIDTH // 2, 45))
+        self.screen.blit(title_text, title_rect)
+
+        # Find winner
+        num = coord.num_players
+        totals = [coord.all_scorecards[i].get_grand_total() for i in range(num)]
+        winner_idx = max(range(num), key=lambda i: totals[i])
+        winner_name = coord.player_configs[winner_idx][0]
+        winner_color = self._player_colors()[winner_idx % len(self._player_colors())]
+
+        winner_font = self._font(36)
+        winner_text = winner_font.render(f"{winner_name} wins!", True, winner_color)
+        winner_rect = winner_text.get_rect(center=(WINDOW_WIDTH // 2, 80))
+        self.screen.blit(winner_text, winner_rect)
+
+        # Compute grid position (same layout as before extraction)
+        label_col_width = 140
+        player_col_width = min(130, (WINDOW_WIDTH - label_col_width - 80) // num)
+        grid_width = label_col_width + player_col_width * num
+        grid_x = (WINDOW_WIDTH - grid_width) // 2
+
+        self._draw_scorecard_grid(grid_x, 105, row_height=22, show_optimal=True)
+
+    def draw_scores_overlay(self):
+        """Draw semi-transparent overlay showing all players' full scorecards.
+
+        Only available in multiplayer — lets players see opponents' per-category
+        scores during the game instead of just the grand totals in the player bar.
+        """
+        coord = self.coordinator
+        num = coord.num_players
+        header_color = self._section_header_color()
+
+        # Semi-transparent background
+        overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        self.screen.blit(overlay, (0, 0))
+
+        # Panel
+        panel_bg, panel_border = self._panel_colors()
+        panel_w, panel_h = 700, 550
+        panel_x = (WINDOW_WIDTH - panel_w) // 2
+        panel_y = (WINDOW_HEIGHT - panel_h) // 2
+        panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
+        pygame.draw.rect(self.screen, panel_bg, panel_rect, border_radius=12)
+        pygame.draw.rect(self.screen, panel_border, panel_rect, width=2, border_radius=12)
+
+        # Title
+        title_font = self._font(48)
+        title = title_font.render("ALL SCORES", True, header_color)
+        title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, panel_y + 35))
+        self.screen.blit(title, title_rect)
+
+        # Compute grid position inside the panel
+        label_col_width = 140
+        player_col_width = min(130, (panel_w - label_col_width - 40) // num)
+        grid_width = label_col_width + player_col_width * num
+        grid_x = (WINDOW_WIDTH - grid_width) // 2
+
+        self._draw_scorecard_grid(grid_x, panel_y + 65, row_height=22)
+
+        # Footer
+        footer_font = self._font(24)
+        footer = footer_font.render("S or Escape to close", True, self._gray_color())
+        footer_rect = footer.get_rect(center=(WINDOW_WIDTH // 2, panel_y + panel_h - 25))
+        self.screen.blit(footer, footer_rect)
 
     def draw_history_overlay(self):
         """Draw semi-transparent overlay showing recent score history."""
@@ -1409,7 +1492,7 @@ class YahtzeeGame:
         self.screen.blit(overlay, (0, 0))
 
         # Panel
-        panel_w, panel_h = 500, 475
+        panel_w, panel_h = 500, 500
         panel_x = (WINDOW_WIDTH - panel_w) // 2
         panel_y = (WINDOW_HEIGHT - panel_h) // 2
         panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
@@ -1430,6 +1513,7 @@ class YahtzeeGame:
             ("Shift+Tab / \u2191", "Previous category"),
             ("Enter", "Score selected category"),
             ("H", "Score history"),
+            ("S", "All player scores (multiplayer)"),
             ("M", "Toggle sound"),
             ("+/-", "AI speed"),
             ("Ctrl+Z", "Undo"),
@@ -1694,6 +1778,10 @@ class YahtzeeGame:
         # Draw zero-score confirmation dialog
         if self.confirm_zero_category is not None:
             self.draw_confirm_dialog()
+
+        # Draw scores overlay (multiplayer all-player scores)
+        if self.showing_scores:
+            self.draw_scores_overlay()
 
         # Draw history overlay
         if self.showing_history:
