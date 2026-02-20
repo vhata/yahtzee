@@ -775,9 +775,9 @@ class YahtzeeGame:
         # rows to fit the extra player name header without overflowing the window.
         scorecard_x = 620
         if coord.multiplayer:
-            scorecard_y = 170
-            row_height = 26
-            panel_height = 550
+            scorecard_y = 180
+            row_height = 24
+            panel_height = 525
         else:
             scorecard_y = 150
             row_height = 28
