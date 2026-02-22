@@ -21,7 +21,16 @@ web = [
     "flask-sock>=0.7.0,<1",
 ]
 
+[project.scripts]
+yahtzee = "yahtzee:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [tool.pytest.ini_options]
+testpaths = ["."]
+norecursedirs = ["scripts", ".git", ".venv", "__pycache__"]
 markers = [
     "slow: integration/quality tests that play many full games (~2 min)",
 ]

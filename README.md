@@ -2,50 +2,39 @@
 
 A Yahtzee game with three frontends (pygame, terminal, browser), AI opponents, multiplayer support, and a clean testable architecture.
 
-## Setup
+## Quick Start
+
+```bash
+uv sync            # Install dependencies
+uv run yahtzee     # Play!
+```
 
 Requires Python 3.10+ and [uv](https://github.com/astral-sh/uv).
 
+## Setup
+
+The core install (`uv sync`) gives you the pygame frontend. For the terminal or browser frontends, install their extras:
+
 ```bash
-uv sync                # Core (pygame)
-make setup-tui         # Terminal UI (optional)
-make setup-web         # Web UI (optional)
-make setup-all         # Everything
+uv sync --extra tui                        # Terminal UI (Textual)
+uv sync --extra web                        # Browser UI (Flask)
+uv sync --extra dev --extra tui --extra web # Everything (dev + all frontends)
 ```
+
+Or use Make shortcuts: `make setup-tui`, `make setup-web`, `make setup-all`.
 
 ## How to Play
 
-### Pygame (default)
-
 ```bash
-uv run python main.py
-uv run python main.py --ai --optimal           # Watch AI play
-uv run python main.py --players human optimal   # Multiplayer
+uv run yahtzee                             # Pygame (default)
+uv run yahtzee --ui tui                    # Terminal
+uv run yahtzee --ui web                    # Browser (localhost:5000)
+uv run yahtzee --ai --optimal              # Watch AI play
+uv run yahtzee --players human optimal     # Play against AI
+uv run yahtzee --ui tui --players human greedy optimal
 ```
 
-### Terminal (Textual)
-
-```bash
-uv run python tui.py
-uv run python tui.py --ai --optimal
-uv run python tui.py --players human greedy
-```
-
-### Browser (Flask + WebSocket)
-
-```bash
-uv run python web.py                            # Open http://localhost:5000
-uv run python web.py --host 0.0.0.0 --port 8080
-```
-
-### Unified Entry Point
-
-```bash
-uv run python yahtzee.py                        # Default: pygame
-uv run python yahtzee.py --ui tui               # Terminal
-uv run python yahtzee.py --ui web               # Browser
-uv run python yahtzee.py --ui tui --ai --optimal
-```
+Make shortcuts: `make play`, `make play-tui`, `make play-web`.
 
 ### Controls
 

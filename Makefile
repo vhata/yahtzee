@@ -22,14 +22,13 @@ setup:
 	uv sync --extra dev
 
 setup-tui: setup
-	uv pip install "textual>=0.50.0"
+	uv sync --extra dev --extra tui
 
 setup-web: setup
-	uv pip install "flask>=3.0.0" "flask-sock>=0.7.0"
+	uv sync --extra dev --extra web
 
 setup-all:
-	uv sync --extra dev
-	uv pip install "textual>=0.50.0" "flask>=3.0.0" "flask-sock>=0.7.0"
+	uv sync --extra dev --extra tui --extra web
 
 lint:
 	uv run ruff check .
