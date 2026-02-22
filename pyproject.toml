@@ -38,7 +38,7 @@ markers = [
 [tool.coverage.run]
 source = ["."]
 branch = true
-omit = ["main.py", "sounds.py", "tui.py", "web.py", "yahtzee.py", "test_*.py", "ai_benchmark.py"]
+omit = ["main.py", "layout.py", "sounds.py", "tui.py", "web.py", "yahtzee.py", "test_*.py", "ai_benchmark.py"]
 
 [tool.coverage.report]
 fail_under = 80

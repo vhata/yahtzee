@@ -30,7 +30,7 @@ from game_coordinator import (
 from game_engine import (
     Category,
 )
-from main import DICE_MARGIN, DICE_SIZE, compute_layout
+from layout import DICE_MARGIN, DICE_SIZE, compute_layout
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
