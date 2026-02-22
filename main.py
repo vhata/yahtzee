@@ -8,6 +8,7 @@ and UI state management to FrontendAdapter.
 import math
 import random
 import sys
+from dataclasses import dataclass
 
 import pygame
 
@@ -96,6 +97,151 @@ DOT_RADIUS = 6
 
 # Game constants
 MAX_ROLLS_PER_TURN = 3
+
+
+# ── Layout ────────────────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class Layout:
+    """Centralized layout constants for the game window.
+
+    All position/size values live here so that dependent values (e.g. scorecard
+    top derived from player bar bottom) update automatically when a base value
+    changes.  Frozen because layout is immutable once computed.
+    """
+
+    # Window
+    window_width: int
+    window_height: int
+
+    # Title area
+    title_y: int
+    round_text_y: int
+    ai_indicator_y: int
+
+    # Player bar (multiplayer)
+    player_bar_y: int
+    player_bar_height: int
+    player_bar_bottom: int  # computed: player_bar_y + player_bar_height
+
+    # Scorecard
+    scorecard_x: int
+    scorecard_y: int
+    scorecard_row_height: int
+    scorecard_col_width: int
+    scorecard_panel_width: int
+    scorecard_panel_height: int
+    scorecard_panel_top: int     # computed: scorecard_y - 15
+    scorecard_panel_bottom: int  # computed: scorecard_panel_top + panel_height
+
+    # Dice area
+    dice_start_x: int
+    dice_y: int
+
+    # Roll button
+    roll_button_x: int
+    roll_button_y: int
+    roll_button_width: int
+    roll_button_height: int
+
+    # Status text
+    roll_status_y: int
+    ai_reason_y: int
+
+    # Play again button
+    play_again_x: int  # computed: (window_width - play_again_width) // 2
+    play_again_y: int
+    play_again_width: int
+    play_again_height: int
+
+
+def compute_layout(multiplayer: bool = False) -> Layout:
+    """Build a Layout with all dependent values computed from base constants.
+
+    The multiplayer flag shifts the scorecard down to clear the player bar and
+    uses tighter rows to fit the extra player-name header without overflowing.
+    """
+    window_width = WINDOW_WIDTH
+    window_height = WINDOW_HEIGHT
+
+    # Title area
+    title_y = 50
+    round_text_y = 90
+    ai_indicator_y = 120
+
+    # Player bar
+    player_bar_y = 130
+    player_bar_height = 32
+    player_bar_bottom = player_bar_y + player_bar_height  # 162
+
+    # Scorecard — multiplayer shifts down to clear the player bar
+    scorecard_x = 620
+    scorecard_panel_width = 360
+    scorecard_col_width = 180
+
+    if multiplayer:
+        scorecard_panel_top = player_bar_bottom + 3  # 165
+        scorecard_y = scorecard_panel_top + 15        # 180
+        scorecard_row_height = 24
+        scorecard_panel_height = 525
+    else:
+        scorecard_y = 150
+        scorecard_panel_top = scorecard_y - 15        # 135
+        scorecard_row_height = 28
+        scorecard_panel_height = 520
+
+    scorecard_panel_bottom = scorecard_panel_top + scorecard_panel_height
+
+    # Dice area
+    dice_start_x = 80
+    dice_y = 300
+
+    # Roll button (centered under the dice area)
+    roll_button_width = 150
+    roll_button_height = 50
+    roll_button_x = dice_start_x + 165  # 245
+    roll_button_y = 500
+
+    # Status text
+    roll_status_y = 560
+    ai_reason_y = 590
+
+    # Play again button
+    play_again_width = 200
+    play_again_height = 60
+    play_again_x = (window_width - play_again_width) // 2  # 400
+    play_again_y = 620
+
+    return Layout(
+        window_width=window_width,
+        window_height=window_height,
+        title_y=title_y,
+        round_text_y=round_text_y,
+        ai_indicator_y=ai_indicator_y,
+        player_bar_y=player_bar_y,
+        player_bar_height=player_bar_height,
+        player_bar_bottom=player_bar_bottom,
+        scorecard_x=scorecard_x,
+        scorecard_y=scorecard_y,
+        scorecard_row_height=scorecard_row_height,
+        scorecard_col_width=scorecard_col_width,
+        scorecard_panel_width=scorecard_panel_width,
+        scorecard_panel_height=scorecard_panel_height,
+        scorecard_panel_top=scorecard_panel_top,
+        scorecard_panel_bottom=scorecard_panel_bottom,
+        dice_start_x=dice_start_x,
+        dice_y=dice_y,
+        roll_button_x=roll_button_x,
+        roll_button_y=roll_button_y,
+        roll_button_width=roll_button_width,
+        roll_button_height=roll_button_height,
+        roll_status_y=roll_status_y,
+        ai_reason_y=ai_reason_y,
+        play_again_x=play_again_x,
+        play_again_y=play_again_y,
+        play_again_width=play_again_width,
+        play_again_height=play_again_height,
+    )
 
 
 # ── Pygame Sound Adapter ─────────────────────────────────────────────────────
@@ -385,31 +531,26 @@ class YahtzeeGame:
             self.coordinator, sound=PygameSoundAdapter()
         )
 
+        # Centralized layout — all positions/sizes derived from one source
+        self.layout = compute_layout(multiplayer=self.coordinator.multiplayer)
+
         # Dice sprites (visual representation only)
         self.dice_sprites = []
-        dice_y = 300
-        # Position dice on left side to avoid scorecard overlap
-        start_x = 80
-
         for i in range(5):
-            x = start_x + i * (DICE_SIZE + DICE_MARGIN)
-            sprite = DiceSprite(x, dice_y)
+            x = self.layout.dice_start_x + i * (DICE_SIZE + DICE_MARGIN)
+            sprite = DiceSprite(x, self.layout.dice_y)
             self.dice_sprites.append(sprite)
 
         # Create roll button (positioned on left side with dice)
-        button_width = 150
-        button_height = 50
-        button_x = start_x + 165  # Center under dice area
-        button_y = 500
-        self.roll_button = Button(button_x, button_y, button_width, button_height, "ROLL")
+        self.roll_button = Button(
+            self.layout.roll_button_x, self.layout.roll_button_y,
+            self.layout.roll_button_width, self.layout.roll_button_height, "ROLL",
+        )
 
         # Play again button (for game over screen)
-        play_again_width = 200
-        play_again_height = 60
-        play_again_x = (WINDOW_WIDTH - play_again_width) // 2
-        play_again_y = 620
         self.play_again_button = Button(
-            play_again_x, play_again_y, play_again_width, play_again_height, "PLAY AGAIN", 40
+            self.layout.play_again_x, self.layout.play_again_y,
+            self.layout.play_again_width, self.layout.play_again_height, "PLAY AGAIN", 40,
         )
 
         # Animation state (GUI concern only — randomized display values during roll)
@@ -769,24 +910,18 @@ class YahtzeeGame:
         coord = self.coordinator
         scorecard = coord.scorecard
         dice = coord.dice
+        lo = self.layout
 
-        # Scorecard position and dimensions — multiplayer shifts down to clear
-        # the player bar (which ends at Y=162) and uses a taller panel + tighter
-        # rows to fit the extra player name header without overflowing the window.
-        scorecard_x = 620
-        if coord.multiplayer:
-            scorecard_y = 180
-            row_height = 24
-            panel_height = 525
-        else:
-            scorecard_y = 150
-            row_height = 28
-            panel_height = 520
-
-        col_width = 180
+        scorecard_x = lo.scorecard_x
+        scorecard_y = lo.scorecard_y
+        row_height = lo.scorecard_row_height
+        col_width = lo.scorecard_col_width
 
         # Draw scorecard background panel
-        panel_rect = pygame.Rect(scorecard_x - 15, scorecard_y - 15, 360, panel_height)
+        panel_rect = pygame.Rect(
+            scorecard_x - 15, lo.scorecard_panel_top,
+            lo.scorecard_panel_width, lo.scorecard_panel_height,
+        )
         pygame.draw.rect(self.screen, self._scorecard_bg(), panel_rect, border_radius=12)
         pygame.draw.rect(self.screen, self._scorecard_border(), panel_rect, width=2, border_radius=12)
 
@@ -900,8 +1035,8 @@ class YahtzeeGame:
     def draw_player_bar(self):
         """Draw horizontal bar showing all players' names and scores (multiplayer only)."""
         coord = self.coordinator
-        bar_y = 130
-        bar_height = 32
+        bar_y = self.layout.player_bar_y
+        bar_height = self.layout.player_bar_height
         font = self._font(26)
         num = coord.num_players
         # Calculate per-player chip width to fit across the available width
@@ -1643,14 +1778,16 @@ class YahtzeeGame:
         game_over = coord.game_over
         current_round = coord.current_round
 
+        lo = self.layout
+
         # Draw title with shadow effect
         font = self._font(72)
         shadow_color = (60, 60, 70) if self.dark_mode else (180, 180, 180)
         title_shadow = font.render("YAHTZEE", True, shadow_color)
-        shadow_rect = title_shadow.get_rect(center=(WINDOW_WIDTH // 2 + 3, 53))
+        shadow_rect = title_shadow.get_rect(center=(WINDOW_WIDTH // 2 + 3, lo.title_y + 3))
         self.screen.blit(title_shadow, shadow_rect)
         title = font.render("YAHTZEE", True, header_color)
-        title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, 50))
+        title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, lo.title_y))
         self.screen.blit(title, title_rect)
 
         # Draw round and turn indicator
@@ -1665,10 +1802,10 @@ class YahtzeeGame:
                 ai_name = strategy.__class__.__name__.replace("Strategy", "")
                 turn_label = f"Round {current_round}/13 — {name}'s turn ({ai_name} AI)"
             round_text = round_font.render(turn_label, True, color)
-            self.screen.blit(round_text, (50, 90))
+            self.screen.blit(round_text, (50, lo.round_text_y))
         else:
             round_text = round_font.render(f"Round {current_round}/13", True, text_color)
-            self.screen.blit(round_text, (50, 90))
+            self.screen.blit(round_text, (50, lo.round_text_y))
 
         # Draw AI/speed indicator
         if not coord.multiplayer and coord.ai_strategy:
@@ -1676,12 +1813,12 @@ class YahtzeeGame:
             ai_name = coord.ai_strategy.__class__.__name__.replace("Strategy", "")
             speed_label = coord.speed_name.capitalize()
             ai_text = ai_font.render(f"AI: {ai_name} | Speed: {speed_label} (+/-)", True, (180, 80, 80))
-            self.screen.blit(ai_text, (50, 120))
+            self.screen.blit(ai_text, (50, lo.ai_indicator_y))
         elif coord.multiplayer and coord.has_any_ai:
             ai_font = self._font(24)
             speed_label = coord.speed_name.capitalize()
             ai_text = ai_font.render(f"Speed: {speed_label} (+/-)", True, self._gray_color())
-            self.screen.blit(ai_text, (50, 120))
+            self.screen.blit(ai_text, (50, lo.ai_indicator_y))
 
         # Draw player bar (multiplayer only)
         if coord.multiplayer:
@@ -1737,7 +1874,7 @@ class YahtzeeGame:
         else:
             rolls_remaining = MAX_ROLLS_PER_TURN - rolls_used
             roll_text = roll_font.render(f"Rolls left: {rolls_remaining}", True, text_color)
-        self.screen.blit(roll_text, (200, 560))
+        self.screen.blit(roll_text, (200, lo.roll_status_y))
 
         # Draw AI reasoning text below roll status
         if coord.current_ai_strategy and coord.ai_reason:
@@ -1758,7 +1895,7 @@ class YahtzeeGame:
                 lines.append(current_line)
 
             reason_color = self._gray_color()
-            reason_y = 590
+            reason_y = lo.ai_reason_y
             for line in lines:
                 reason_surface = reason_font.render(line, True, reason_color)
                 self.screen.blit(reason_surface, (80, reason_y))

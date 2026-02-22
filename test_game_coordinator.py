@@ -30,6 +30,7 @@ from game_coordinator import (
 from game_engine import (
     Category,
 )
+from main import DICE_MARGIN, DICE_SIZE, compute_layout
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1320,3 +1321,100 @@ class TestGameLog:
         tick_until(c, lambda c: c.game_over, max_ticks=100000)
         scores = c.game_log.get_score_entries(player_index=0)
         assert len(scores) == 13
+
+
+# ── Layout constraint tests ──────────────────────────────────────────────────
+
+class TestLayout:
+    """Verify that computed layout values satisfy spatial constraints.
+
+    These tests catch overlap / overflow regressions before they ship
+    by asserting relationships between dependent layout values.
+    """
+
+    def test_single_player_scorecard_within_window(self):
+        """Scorecard panel bottom must not exceed window height."""
+        lo = compute_layout(multiplayer=False)
+        assert lo.scorecard_panel_bottom <= lo.window_height
+
+    def test_multiplayer_scorecard_within_window(self):
+        """Multiplayer scorecard panel bottom must not exceed window height."""
+        lo = compute_layout(multiplayer=True)
+        assert lo.scorecard_panel_bottom <= lo.window_height
+
+    def test_multiplayer_scorecard_clears_player_bar(self):
+        """Scorecard panel top must be below the player bar bottom."""
+        lo = compute_layout(multiplayer=True)
+        assert lo.scorecard_panel_top > lo.player_bar_bottom
+
+    def test_scorecard_panel_right_edge_within_window(self):
+        """Scorecard panel right edge must not exceed window width."""
+        lo = compute_layout(multiplayer=False)
+        panel_right = lo.scorecard_x - 15 + lo.scorecard_panel_width
+        assert panel_right <= lo.window_width
+
+    def test_dice_area_does_not_overlap_scorecard(self):
+        """Rightmost die right edge must be left of the scorecard panel."""
+        lo = compute_layout(multiplayer=False)
+        rightmost_die_right = lo.dice_start_x + 4 * (DICE_SIZE + DICE_MARGIN) + DICE_SIZE
+        scorecard_panel_left = lo.scorecard_x - 15
+        assert rightmost_die_right < scorecard_panel_left
+
+    def test_play_again_button_within_window(self):
+        """Play again button bottom must not exceed window height."""
+        lo = compute_layout(multiplayer=False)
+        button_bottom = lo.play_again_y + lo.play_again_height
+        assert button_bottom <= lo.window_height
+
+    def test_roll_button_above_status_text(self):
+        """Roll button bottom must be above the roll status text."""
+        lo = compute_layout(multiplayer=False)
+        button_bottom = lo.roll_button_y + lo.roll_button_height
+        assert button_bottom < lo.roll_status_y
+
+    def test_layout_snapshot_values(self):
+        """Exact numeric values match expectations — update when intentionally
+        changing layout. This catches accidental drift in base constants."""
+        lo_single = compute_layout(multiplayer=False)
+        lo_multi = compute_layout(multiplayer=True)
+
+        # Window
+        assert lo_single.window_width == 1000
+        assert lo_single.window_height == 700
+
+        # Title area
+        assert lo_single.title_y == 50
+        assert lo_single.round_text_y == 90
+        assert lo_single.ai_indicator_y == 120
+
+        # Player bar
+        assert lo_single.player_bar_y == 130
+        assert lo_single.player_bar_height == 32
+        assert lo_single.player_bar_bottom == 162
+
+        # Scorecard (single player)
+        assert lo_single.scorecard_x == 620
+        assert lo_single.scorecard_y == 150
+        assert lo_single.scorecard_row_height == 28
+        assert lo_single.scorecard_panel_top == 135
+        assert lo_single.scorecard_panel_height == 520
+        assert lo_single.scorecard_panel_bottom == 655
+
+        # Scorecard (multiplayer) — shifted down to clear player bar
+        assert lo_multi.scorecard_y == 180
+        assert lo_multi.scorecard_row_height == 24
+        assert lo_multi.scorecard_panel_top == 165
+        assert lo_multi.scorecard_panel_height == 525
+        assert lo_multi.scorecard_panel_bottom == 690
+
+        # Dice area
+        assert lo_single.dice_start_x == 80
+        assert lo_single.dice_y == 300
+
+        # Roll button
+        assert lo_single.roll_button_x == 245
+        assert lo_single.roll_button_y == 500
+
+        # Play again
+        assert lo_single.play_again_x == 400
+        assert lo_single.play_again_y == 620
