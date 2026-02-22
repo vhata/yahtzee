@@ -96,7 +96,7 @@ uv run python yahtzee.py --ui tui --ai --optimal
 game_engine.py         Pure game logic (immutable GameState, pure functions)
 game_coordinator.py    State machine, AI pacing, timers (no pygame)
 frontend_adapter.py    Shared UI state: overlays, settings, score saving
-    ├── main.py        Pygame rendering shell
+    ├── main.py        Pygame rendering shell + Layout dataclass
     ├── tui.py         Textual terminal UI
     └── web.py         Flask + WebSocket server
 ai.py                  4 AI strategies + game loop
@@ -109,25 +109,27 @@ sounds.py              Synthesized PCM sound effects
 
 Game logic is fully separated from rendering. `GameState` is an immutable frozen dataclass; all engine functions return new state. The `FrontendAdapter` provides shared UI state management (overlays, zero-confirm, keyboard navigation, score flash, settings persistence) so all three frontends share the same logic without duplication.
 
+Layout constants for the pygame frontend are centralized in a frozen `Layout` dataclass with a `compute_layout(multiplayer)` factory function. Dependent values (e.g. scorecard top derived from player bar bottom) are computed automatically so changes cascade without manual updates. Constraint tests catch spatial violations (overlap, overflow) before they ship.
+
 ## Testing
 
 ```bash
-uv run pytest                # Full suite (546 fast + 10 slow)
-uv run pytest -m "not slow"  # Fast only (~8s)
+uv run pytest                # Full suite (554 fast + 10 slow)
+uv run pytest -m "not slow"  # Fast only (~9s)
 make coverage                # With coverage report (80% threshold)
 ```
 
 | Test file | Tests | What it covers |
 |---|---|---|
 | `test_game_engine.py` | 219 | Single-player + multiplayer game logic |
-| `test_game_coordinator.py` | 148 | State machine, undo, animations, smoke rendering |
+| `test_game_coordinator.py` | 153 | State machine, undo, animations, layout constraints, smoke rendering |
 | `test_frontend_adapter.py` | 48 | Overlays, zero-confirm, navigation, settings, snapshot |
+| `test_web.py` | 57 | WebSocket action dispatch, category lookup |
 | `test_ai.py` | 35 | Strategy legality, quality ranking, edge cases |
 | `test_dice_tables.py` | 21 | Combinatorics, probabilities, score tables |
-| `test_score_history.py` | 14 | Score persistence and retrieval |
+| `test_score_history.py` | 16 | Score persistence and retrieval |
 | `test_game_log.py` | 8 | Roll/score/hold logging, filtering, multiplayer |
-| `test_web.py` | 57 | WebSocket action dispatch, category lookup |
-| `test_settings.py` | 6 | Settings persistence, corrupt file handling |
+| `test_settings.py` | 7 | Settings persistence, corrupt file handling |
 
 ## Benchmarking
 
