@@ -638,4 +638,9 @@ class FrontendAdapter:
             "sound_enabled": self.sound.enabled,
             "turn_log": turn_log,
             "category_breakdown": category_breakdown,
+            "last_turn_summary": (
+                {"player": s[0], "category": s[1], "score": s[2]}
+                if (s := coord.last_turn_summary()) is not None
+                else None
+            ),
         }

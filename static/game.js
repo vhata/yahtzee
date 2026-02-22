@@ -326,6 +326,14 @@ function renderOverlays(s) {
         const p = s.player_configs[idx];
         const suffix = p.is_human ? "" : ` (${capitalize(p.strategy)} AI)`;
         document.getElementById("transition-text").textContent = `${p.name}'s Turn!${suffix}`;
+        const summaryEl = document.getElementById("transition-summary");
+        if (s.last_turn_summary) {
+            const ts = s.last_turn_summary;
+            summaryEl.textContent = `${ts.player} scored ${ts.score} in ${ts.category}`;
+            summaryEl.classList.remove("hidden");
+        } else {
+            summaryEl.classList.add("hidden");
+        }
     } else {
         transEl.classList.add("hidden");
     }

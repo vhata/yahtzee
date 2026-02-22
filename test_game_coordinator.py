@@ -1323,6 +1323,67 @@ class TestGameLog:
         assert len(scores) == 13
 
 
+class TestLastTurnSummary:
+    """Tests for last_turn_summary() method."""
+
+    def test_returns_none_before_any_scoring(self):
+        """last_turn_summary() returns None when no scores have been logged."""
+        c = GameCoordinator()
+        assert c.last_turn_summary() is None
+
+    def test_returns_none_after_roll_only(self):
+        """last_turn_summary() returns None when only rolls have occurred."""
+        random.seed(42)
+        c = GameCoordinator()
+        c.roll_dice()
+        tick_until(c, lambda c: not c.is_rolling)
+        assert c.last_turn_summary() is None
+
+    def test_returns_summary_after_scoring_single_player(self):
+        """last_turn_summary() returns correct info after scoring in single-player."""
+        random.seed(42)
+        c = GameCoordinator()
+        c.roll_dice()
+        tick_until(c, lambda c: not c.is_rolling)
+        c.select_category(Category.CHANCE)
+        summary = c.last_turn_summary()
+        assert summary is not None
+        name, cat_name, score = summary
+        assert name == "Player"
+        assert cat_name == "Chance"
+        assert isinstance(score, int)
+
+    def test_returns_summary_after_scoring_multiplayer(self):
+        """last_turn_summary() returns the previous player's scoring info in multiplayer."""
+        random.seed(42)
+        players = [("Alice", None), ("Bob", GreedyStrategy())]
+        c = GameCoordinator(speed="fast", players=players)
+        # Skip turn transition
+        tick_until(c, lambda c: not c.turn_transition)
+        # Alice rolls and scores
+        c.roll_dice()
+        tick_until(c, lambda c: not c.is_rolling)
+        c.select_category(Category.CHANCE)
+        # Now it's Bob's turn — summary should show Alice's score
+        summary = c.last_turn_summary()
+        assert summary is not None
+        name, cat_name, score = summary
+        assert name == "Alice"
+        assert cat_name == "Chance"
+        assert isinstance(score, int)
+
+    def test_reset_clears_summary(self):
+        """last_turn_summary() returns None after reset_game()."""
+        random.seed(42)
+        c = GameCoordinator()
+        c.roll_dice()
+        tick_until(c, lambda c: not c.is_rolling)
+        c.select_category(Category.ONES)
+        assert c.last_turn_summary() is not None
+        c.reset_game()
+        assert c.last_turn_summary() is None
+
+
 # ── Layout constraint tests ──────────────────────────────────────────────────
 
 class TestLayout:

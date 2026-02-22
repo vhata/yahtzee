@@ -511,6 +511,20 @@ class GameCoordinator:
                 self.ai_showing_holds = True
                 self.ai_hold_timer = 0
 
+    # ── Turn summary ────────────────────────────────────────────────────
+
+    def last_turn_summary(self) -> tuple[str, str, int] | None:
+        """Return (player_name, category_name, score) for the most recent scoring action, or None."""
+        score_entries = [e for e in self.game_log.entries if e.event_type == "score"]
+        if not score_entries:
+            return None
+        last = score_entries[-1]
+        if self.multiplayer and self.player_configs:
+            name = self.player_configs[last.player_index][0]
+        else:
+            name = "Player"
+        return (name, last.category.value, last.score)
+
     # ── Internal ─────────────────────────────────────────────────────────
 
     def _on_turn_scored(self) -> None:

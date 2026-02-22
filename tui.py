@@ -173,6 +173,10 @@ class StatusDisplay(Static):
             else:
                 ai_name = strategy.__class__.__name__.replace("Strategy", "")
                 lines.append(f"\n[bold]{name}'s Turn! ({ai_name} AI)[/bold]")
+            summary = coord.last_turn_summary()
+            if summary:
+                prev_name, cat_name, score = summary
+                lines.append(f"[dim]{prev_name} scored {score} in {cat_name}[/dim]")
 
         return "\n".join(lines)
 

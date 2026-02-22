@@ -943,13 +943,28 @@ class YahtzeeGame:
             ai_name = strategy.__class__.__name__.replace("Strategy", "")
             label = f"{name}'s Turn! ({ai_name} AI)"
 
-        text = font.render(label, True, WHITE)
-        text_rect = text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2))
+        # Check for previous player's score summary
+        summary = coord.last_turn_summary()
 
-        # Draw a colored rounded rect behind the text
+        text = font.render(label, True, WHITE)
+        # Shift main text up slightly if we have a summary to show below
+        center_y = WINDOW_HEIGHT // 2 - (15 if summary else 0)
+        text_rect = text.get_rect(center=(WINDOW_WIDTH // 2, center_y))
+
+        # Draw a colored rounded rect behind the text (and summary if present)
         bg_rect = text_rect.inflate(40, 20)
+        if summary:
+            bg_rect = bg_rect.inflate(0, 30)
         pygame.draw.rect(self.screen, color, bg_rect, border_radius=12)
         self.screen.blit(text, text_rect)
+
+        if summary:
+            prev_name, cat_name, score = summary
+            small_font = self._font(28)
+            sub_label = f"{prev_name} scored {score} in {cat_name}"
+            sub_text = small_font.render(sub_label, True, (220, 220, 220))
+            sub_rect = sub_text.get_rect(center=(WINDOW_WIDTH // 2, center_y + 40))
+            self.screen.blit(sub_text, sub_rect)
 
     def draw_game_over(self):
         """Draw the game over screen overlay."""
